@@ -153,7 +153,7 @@ export default function DashboardPage() {
                   >
                     <div className="flex items-start justify-between mb-2">
                       <h3 className="font-semibold text-sm sm:text-base">{note.title}</h3>
-                      <Clock className="h-4 w-4 text-muted-foreground flex-shrink-0 ml-2" />
+                      <Clock className="h-4 w-4 text-muted-foreground shrink-0 ml-2" />
                     </div>
                     <p className="text-xs sm:text-sm text-muted-foreground mb-2">{note.content}</p>
                     <p className="text-xs text-muted-foreground">{note.time}</p>
@@ -205,7 +205,7 @@ export default function DashboardPage() {
                   >
                     <div className="flex items-start justify-between mb-2">
                       <h3 className="font-semibold text-sm sm:text-base">{item.title}</h3>
-                      <Star className="h-4 w-4 text-[#F6A800] fill-[#F6A800] flex-shrink-0 ml-2" />
+                      <Star className="h-4 w-4 text-[#F6A800] fill-[#F6A800] shrink-0 ml-2" />
                     </div>
                     {item.type === "note" ? (
                       <>

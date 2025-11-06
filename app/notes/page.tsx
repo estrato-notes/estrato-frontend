@@ -189,7 +189,7 @@ export default function NotesPage() {
                     <div key={notebook.id} className="flex items-center gap-2">
                       <button
                         onClick={() => toggleNotebookFavorite(notebook.id)}
-                        className="flex-shrink-0 text-muted-foreground hover:text-[#F6A800] transition-colors"
+                        className="shrink-0 text-muted-foreground hover:text-[#F6A800] transition-colors"
                       >
                         <Star
                           className={`h-4 w-4 ${
@@ -211,7 +211,7 @@ export default function NotesPage() {
                       {notebook.id !== "all" && (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <button className="flex-shrink-0 text-muted-foreground hover:text-foreground transition-colors">
+                            <button className="shrink-0 text-muted-foreground hover:text-foreground transition-colors">
                               <MoreVertical className="h-4 w-4" />
                             </button>
                           </DropdownMenuTrigger>
@@ -284,7 +284,7 @@ export default function NotesPage() {
                     <div className="flex items-start gap-2">
                       <button
                         onClick={() => toggleNoteFavorite(note.id)}
-                        className="flex-shrink-0 mt-1 text-muted-foreground hover:text-[#F6A800] transition-colors"
+                        className="shrink-0 mt-1 text-muted-foreground hover:text-[#F6A800] transition-colors"
                       >
                         <Star
                           className={`h-4 w-4 ${

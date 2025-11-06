@@ -38,7 +38,7 @@ export default function ProfilePage() {
 
   // Mock user data
   const user = {
-    avatar: "/placeholder.svg?key=4v563",
+    avatar: "/user-avatar.png",
   }
 
   const handleSavePersonalInfo = () => {

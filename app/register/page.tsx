@@ -28,7 +28,7 @@ export default function RegisterPage() {
       {/* Background Image - Replace src with your image path */}
       <div
         className="absolute inset-0 bg-cover bg-center bg-no-repeat"
-        style={{ backgroundImage: "url('/path-to-your-background-image.jpg')" }}
+        style={{ backgroundImage: "url('/background-estrato.jpg')" }}
       >
         {/* Optional overlay for better readability */}
         <div className="absolute inset-0 bg-black/20" />
@@ -36,7 +36,7 @@ export default function RegisterPage() {
 
       {/* Logo in top-left corner */}
       <div className="absolute top-6 left-6 z-10">
-        <img src="/path-to-your-logo.png" alt="Estrato Logo" className="h-8 sm:h-10 w-auto" />
+        <img src="/logo-name-white.svg" alt="Estrato Logo" className="h-24 w-24" />
       </div>
 
       {/* Register Card */}

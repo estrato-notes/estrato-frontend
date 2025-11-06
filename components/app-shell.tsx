@@ -44,7 +44,7 @@ export function AppShell({ children }: AppShellProps) {
   const user = {
     name: "João Silva",
     email: "joao@email.com",
-    avatar: "/diverse-user-avatars.png",
+    avatar: "/user-avatar.png",
   }
 
   const handleLogout = () => {
@@ -170,8 +170,8 @@ export function AppShell({ children }: AppShellProps) {
           </Sheet>
 
           {/* Logo - Left */}
-          <Link href="/dashboard" className="flex items-center flex-shrink-0">
-            <img src="/placeholder.svg" alt="Estrato Logo" className="h-8 w-auto" />
+          <Link href="/dashboard" className="flex items-center shrink-0">
+            <img src="/logo-blue.svg" alt="Estrato Logo" className="h-8 w-auto" />
           </Link>
 
           {/* Search Bar - Center */}
@@ -226,7 +226,7 @@ export function AppShell({ children }: AppShellProps) {
           </div>
 
           {/* Right Side - New Note Button + User Menu */}
-          <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex items-center gap-2 shrink-0">
             {/* New Note Button */}
             <Button onClick={() => setShowNewNoteModal(true)} className="bg-primary hover:bg-primary/90">
               <Plus className="h-4 w-4 sm:mr-2" />
@@ -238,7 +238,7 @@ export function AppShell({ children }: AppShellProps) {
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-10 w-10 rounded-full">
                   <Avatar className="h-10 w-10">
-                    <AvatarImage src={user.avatar || "/placeholder.svg"} alt={user.name} />
+                    <AvatarImage src={user.avatar || "/user-avatar.png"} alt={user.name} />
                     <AvatarFallback>
                       {user.name
                         .split(" ")
