@@ -10,6 +10,10 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
+import authApi from "@/lib/api/authApi"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Spinner } from "@/components/ui/spinner"
+
 export default function RegisterPage() {
   const router = useRouter()
   const [showPassword, setShowPassword] = useState(false)
@@ -17,10 +21,40 @@ export default function RegisterPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleSubmit =  async (e: React.FormEvent) => {
     e.preventDefault()
-    // TODO: Add registration logic
-    router.push("/dashboard")
+    
+    if(password.length < 8) {
+      setError("A senha deve ter pelo menos 8 caracteres.")
+      setIsLoading(false)
+      return
+    }
+
+    try {
+      const response = await authApi.post("/auth/register", {
+        full_name: name,
+        email: email,
+        password: password
+      })
+
+      const { access_token } = response.data
+      
+      localStorage.setItem("token", access_token)
+      
+      router.push("/dashboard")
+    } catch (err: any) {
+      if(err.response && err.response.status === 409) {
+        setError("Um usuário com esse email já existe")
+      } else {
+        setError("Ocorreu um erro ao criar a conta. Tente novamente.")
+      }
+    } finally {
+      setIsLoading(false)
+    }
+
   }
 
   return (
@@ -47,6 +81,15 @@ export default function RegisterPage() {
           </h2>
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            {error && (
+              <Alert variant="destructive">
+                <AlertDescription className="text-center">
+                  {error}
+                </AlertDescription>
+              </Alert>
+            )}
+
+
             <div className="space-y-2">
               <Label htmlFor="name" className="text-sm">
                 Nome
@@ -59,6 +102,7 @@ export default function RegisterPage() {
                 onChange={(e) => setName(e.target.value)}
                 required
                 className="w-full text-sm"
+                disabled={isLoading}
               />
             </div>
 
@@ -74,6 +118,7 @@ export default function RegisterPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 className="w-full text-sm"
+                disabled={isLoading}
               />
             </div>
 
@@ -90,6 +135,7 @@ export default function RegisterPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   className="w-full pr-10 text-sm"
+                  disabled={isLoading}
                 />
                 <button
                   type="button"
@@ -102,7 +148,8 @@ export default function RegisterPage() {
             </div>
 
             <Button type="submit" className="w-full bg-primary hover:bg-primary/90 text-sm sm:text-base">
-              Cadastrar
+              {isLoading ? <Spinner className="mr-2" /> : null}
+              {isLoading ? "Criando conta..." : "Cadastrar"}
             </Button>
           </form>
 
