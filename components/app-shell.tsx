@@ -1,11 +1,20 @@
-"use client"
+"use client";
 
-import { useState, type ReactNode } from "react"
-import Link from "next/link"
-import { useRouter, usePathname } from "next/navigation"
-import { Search, Plus, FileText, Layout, LogOut, User, Hash, Menu } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { useState, type ReactNode, useEffect } from "react";
+import Link from "next/link";
+import { useRouter, usePathname } from "next/navigation";
+import {
+  Search,
+  Plus,
+  FileText,
+  Layout,
+  LogOut,
+  User,
+  Hash,
+  Menu,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,113 +22,157 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { NewNoteModal } from "@/components/new-note-modal"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Badge } from "@/components/ui/badge"
-import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetHeader } from "@/components/ui/sheet"
+} from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { NewNoteModal } from "@/components/new-note-modal";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Badge } from "@/components/ui/badge";
+import {
+  Sheet,
+  SheetContent,
+  SheetTrigger,
+  SheetTitle,
+  SheetHeader,
+} from "@/components/ui/sheet";
+import authApi from "@/lib/api/authApi";
+
+interface User {
+  id: string;
+  full_name: string;
+  email: string;
+  created_at: string;
+  updated_at: string;
+}
 
 interface AppShellProps {
-  children: ReactNode
+  children: ReactNode;
 }
 
 type SearchResult = {
-  id: string
-  name: string
-  type: "note" | "notebook" | "tag" | "template"
-  snippet?: string
-}
+  id: string;
+  name: string;
+  type: "note" | "notebook" | "tag" | "template";
+  snippet?: string;
+};
 
 export function AppShell({ children }: AppShellProps) {
-  const router = useRouter()
-  const pathname = usePathname()
-  const [searchQuery, setSearchQuery] = useState("")
-  const [showNewNoteModal, setShowNewNoteModal] = useState(false)
-  const [searchResults, setSearchResults] = useState<SearchResult[]>([])
-  const [showSearchResults, setShowSearchResults] = useState(false)
-  const [isSearching, setIsSearching] = useState(false)
-  const [showMobileMenu, setShowMobileMenu] = useState(false)
+  const router = useRouter();
+  const pathname = usePathname();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showNewNoteModal, setShowNewNoteModal] = useState(false);
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [showSearchResults, setShowSearchResults] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
 
-  const user = {
-    name: "João Silva",
-    email: "joao@email.com",
-    avatar: "/user-avatar.png",
-  }
+  const [user, setUser] = useState<User | null>(null);
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const response = await authApi.get<User>("/auth/users/me");
+        setUser(response.data);
+      } catch (err) {
+        console.error("Erro ao buscar o usuário: ", err);
+        localStorage.removeItem("token");
+        router.push("/login");
+      }
+    };
+
+    fetchUser();
+  }, [router]);
 
   const handleLogout = () => {
-    router.push("/login")
-  }
+    router.push("/login");
+  };
 
   const handleSearch = async (query: string) => {
-    setSearchQuery(query)
+    setSearchQuery(query);
 
     if (query.trim().length < 2) {
-      setShowSearchResults(false)
-      return
+      setShowSearchResults(false);
+      return;
     }
 
-    setIsSearching(true)
-    setShowSearchResults(true)
+    setIsSearching(true);
+    setShowSearchResults(true);
 
     const mockResults: SearchResult[] = [
-      { id: "1", name: "Nota sobre React", type: "note", snippet: "Conteúdo sobre hooks..." },
+      {
+        id: "1",
+        name: "Nota sobre React",
+        type: "note",
+        snippet: "Conteúdo sobre hooks...",
+      },
       { id: "2", name: "Estudos", type: "notebook" },
       { id: "3", name: "javascript", type: "tag" },
-      { id: "4", name: "Template de Reunião", type: "template", snippet: "Template para reuniões semanais" },
-    ]
+      {
+        id: "4",
+        name: "Template de Reunião",
+        type: "template",
+        snippet: "Template para reuniões semanais",
+      },
+    ];
 
     setTimeout(() => {
-      setSearchResults(mockResults.filter((r) => r.name.toLowerCase().includes(query.toLowerCase())))
-      setIsSearching(false)
-    }, 300)
-  }
+      setSearchResults(
+        mockResults.filter((r) =>
+          r.name.toLowerCase().includes(query.toLowerCase())
+        )
+      );
+      setIsSearching(false);
+    }, 300);
+  };
 
   const handleResultClick = (result: SearchResult) => {
-    setShowSearchResults(false)
-    setSearchQuery("")
+    setShowSearchResults(false);
+    setSearchQuery("");
 
     switch (result.type) {
       case "note":
-        router.push(`/notes?note=${result.id}`)
-        break
+        router.push(`/notes?note=${result.id}`);
+        break;
       case "notebook":
-        router.push(`/notes?notebook=${result.id}`)
-        break
+        router.push(`/notes?notebook=${result.id}`);
+        break;
       case "tag":
-        router.push(`/notes?tag=${result.id}`)
-        break
+        router.push(`/notes?tag=${result.id}`);
+        break;
       case "template":
-        router.push(`/templates?template=${result.id}`)
-        break
+        router.push(`/templates?template=${result.id}`);
+        break;
     }
-  }
+  };
 
   const getResultIcon = (type: SearchResult["type"]) => {
     switch (type) {
       case "note":
-        return <FileText className="h-4 w-4" />
+        return <FileText className="h-4 w-4" />;
       case "notebook":
-        return <Layout className="h-4 w-4" />
+        return <Layout className="h-4 w-4" />;
       case "tag":
-        return <Hash className="h-4 w-4" />
+        return <Hash className="h-4 w-4" />;
       case "template":
-        return <FileText className="h-4 w-4" />
+        return <FileText className="h-4 w-4" />;
     }
-  }
+  };
 
   const getResultTypeLabel = (type: SearchResult["type"]) => {
     switch (type) {
       case "note":
-        return "Nota"
+        return "Nota";
       case "notebook":
-        return "Caderno"
+        return "Caderno";
       case "tag":
-        return "Tag"
+        return "Tag";
       case "template":
-        return "Template"
+        return "Template";
     }
-  }
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -138,29 +191,47 @@ export function AppShell({ children }: AppShellProps) {
                 <SheetTitle>Menu de Navegação</SheetTitle>
               </SheetHeader>
               <nav className="flex flex-col gap-4 mt-8">
-                <Link href="/dashboard" onClick={() => setShowMobileMenu(false)}>
-                  <Button variant={pathname === "/dashboard" ? "secondary" : "ghost"} className="w-full justify-start">
+                <Link
+                  href="/dashboard"
+                  onClick={() => setShowMobileMenu(false)}
+                >
+                  <Button
+                    variant={pathname === "/dashboard" ? "secondary" : "ghost"}
+                    className="w-full justify-start"
+                  >
                     <Layout className="mr-2 h-4 w-4" />
                     Dashboard
                   </Button>
                 </Link>
 
                 <Link href="/notes" onClick={() => setShowMobileMenu(false)}>
-                  <Button variant={pathname === "/notes" ? "secondary" : "ghost"} className="w-full justify-start">
+                  <Button
+                    variant={pathname === "/notes" ? "secondary" : "ghost"}
+                    className="w-full justify-start"
+                  >
                     <FileText className="mr-2 h-4 w-4" />
                     Minhas Notas
                   </Button>
                 </Link>
 
-                <Link href="/templates" onClick={() => setShowMobileMenu(false)}>
-                  <Button variant={pathname === "/templates" ? "secondary" : "ghost"} className="w-full justify-start">
+                <Link
+                  href="/templates"
+                  onClick={() => setShowMobileMenu(false)}
+                >
+                  <Button
+                    variant={pathname === "/templates" ? "secondary" : "ghost"}
+                    className="w-full justify-start"
+                  >
                     <FileText className="mr-2 h-4 w-4" />
                     Templates
                   </Button>
                 </Link>
 
                 <Link href="/tags" onClick={() => setShowMobileMenu(false)}>
-                  <Button variant={pathname === "/tags" ? "secondary" : "ghost"} className="w-full justify-start">
+                  <Button
+                    variant={pathname === "/tags" ? "secondary" : "ghost"}
+                    className="w-full justify-start"
+                  >
                     <Hash className="mr-2 h-4 w-4" />
                     Gerenciar Tags
                   </Button>
@@ -171,12 +242,19 @@ export function AppShell({ children }: AppShellProps) {
 
           {/* Logo - Left */}
           <Link href="/dashboard" className="flex items-center shrink-0">
-            <img src="/logo-blue.svg" alt="Estrato Logo" className="h-8 w-auto" />
+            <img
+              src="/logo-blue.svg"
+              alt="Estrato Logo"
+              className="h-8 w-auto"
+            />
           </Link>
 
           {/* Search Bar - Center */}
           <div className="hidden md:flex flex-1 justify-center max-w-2xl mx-auto">
-            <Popover open={showSearchResults} onOpenChange={setShowSearchResults}>
+            <Popover
+              open={showSearchResults}
+              onOpenChange={setShowSearchResults}
+            >
               <PopoverTrigger asChild>
                 <div className="relative w-full">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -185,15 +263,22 @@ export function AppShell({ children }: AppShellProps) {
                     placeholder="Buscar notas, cadernos, tags..."
                     value={searchQuery}
                     onChange={(e) => handleSearch(e.target.value)}
-                    onFocus={() => searchQuery.length >= 2 && setShowSearchResults(true)}
+                    onFocus={() =>
+                      searchQuery.length >= 2 && setShowSearchResults(true)
+                    }
                     className="w-full pl-10"
                   />
                 </div>
               </PopoverTrigger>
-              <PopoverContent className="w-[90vw] md:w-[600px] p-0" align="center">
+              <PopoverContent
+                className="w-[90vw] md:w-[600px] p-0"
+                align="center"
+              >
                 <div className="max-h-[400px] overflow-y-auto">
                   {isSearching ? (
-                    <div className="p-4 text-center text-sm text-muted-foreground">Buscando...</div>
+                    <div className="p-4 text-center text-sm text-muted-foreground">
+                      Buscando...
+                    </div>
                   ) : searchResults.length > 0 ? (
                     <div className="py-2">
                       {searchResults.map((result) => (
@@ -202,7 +287,9 @@ export function AppShell({ children }: AppShellProps) {
                           onClick={() => handleResultClick(result)}
                           className="w-full px-4 py-3 hover:bg-accent text-left transition-colors flex items-start gap-3"
                         >
-                          <div className="mt-1 text-muted-foreground">{getResultIcon(result.type)}</div>
+                          <div className="mt-1 text-muted-foreground">
+                            {getResultIcon(result.type)}
+                          </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
                               <span className="font-medium">{result.name}</span>
@@ -211,14 +298,18 @@ export function AppShell({ children }: AppShellProps) {
                               </Badge>
                             </div>
                             {result.snippet && (
-                              <p className="text-sm text-muted-foreground line-clamp-1">{result.snippet}</p>
+                              <p className="text-sm text-muted-foreground line-clamp-1">
+                                {result.snippet}
+                              </p>
                             )}
                           </div>
                         </button>
                       ))}
                     </div>
                   ) : (
-                    <div className="p-4 text-center text-sm text-muted-foreground">Nenhum resultado encontrado</div>
+                    <div className="p-4 text-center text-sm text-muted-foreground">
+                      Nenhum resultado encontrado
+                    </div>
                   )}
                 </div>
               </PopoverContent>
@@ -228,7 +319,10 @@ export function AppShell({ children }: AppShellProps) {
           {/* Right Side - New Note Button + User Menu */}
           <div className="flex items-center gap-2 shrink-0">
             {/* New Note Button */}
-            <Button onClick={() => setShowNewNoteModal(true)} className="bg-primary hover:bg-primary/90">
+            <Button
+              onClick={() => setShowNewNoteModal(true)}
+              className="bg-primary hover:bg-primary/90"
+            >
               <Plus className="h-4 w-4 sm:mr-2" />
               <span className="hidden sm:inline">Nova Nota</span>
             </Button>
@@ -236,14 +330,22 @@ export function AppShell({ children }: AppShellProps) {
             {/* User Menu */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="relative h-10 w-10 rounded-full">
+                <Button
+                  variant="ghost"
+                  className="relative h-10 w-10 rounded-full"
+                >
                   <Avatar className="h-10 w-10">
-                    <AvatarImage src={user.avatar || "/user-avatar.png"} alt={user.name} />
+                    <AvatarImage
+                      src="/user-avatar.png"
+                      alt={user?.full_name || "Ícone de avatar"}
+                    />
                     <AvatarFallback>
-                      {user.name
-                        .split(" ")
-                        .map((n) => n[0])
-                        .join("")}
+                      {user
+                        ? user.full_name
+                            .split(" ")
+                            .map((n) => n[0])
+                            .join("")
+                        : "..."}
                     </AvatarFallback>
                   </Avatar>
                 </Button>
@@ -251,8 +353,12 @@ export function AppShell({ children }: AppShellProps) {
               <DropdownMenuContent className="w-56" align="end">
                 <DropdownMenuLabel>
                   <div className="flex flex-col space-y-1">
-                    <p className="text-sm font-medium leading-none">{user.name}</p>
-                    <p className="text-xs leading-none text-muted-foreground">{user.email}</p>
+                    <p className="text-sm font-medium leading-none">
+                      {user?.full_name || "Carregando..."}
+                    </p>
+                    <p className="text-xs leading-none text-muted-foreground">
+                      {user?.email || "..."}
+                    </p>
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
@@ -261,7 +367,10 @@ export function AppShell({ children }: AppShellProps) {
                   Meu Perfil
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive">
+                <DropdownMenuItem
+                  onClick={handleLogout}
+                  className="text-destructive focus:text-destructive"
+                >
                   <LogOut className="mr-2 h-4 w-4" />
                   Sair
                 </DropdownMenuItem>
@@ -277,7 +386,11 @@ export function AppShell({ children }: AppShellProps) {
               <Button
                 variant="ghost"
                 size="sm"
-                className={pathname === "/dashboard" ? "border-b-2 border-primary rounded-none" : ""}
+                className={
+                  pathname === "/dashboard"
+                    ? "border-b-2 border-primary rounded-none"
+                    : ""
+                }
               >
                 <Layout className="mr-2 h-4 w-4" />
                 Dashboard
@@ -288,7 +401,11 @@ export function AppShell({ children }: AppShellProps) {
               <Button
                 variant="ghost"
                 size="sm"
-                className={pathname === "/notes" ? "border-b-2 border-primary rounded-none" : ""}
+                className={
+                  pathname === "/notes"
+                    ? "border-b-2 border-primary rounded-none"
+                    : ""
+                }
               >
                 <FileText className="mr-2 h-4 w-4" />
                 Minhas Notas
@@ -299,7 +416,11 @@ export function AppShell({ children }: AppShellProps) {
               <Button
                 variant="ghost"
                 size="sm"
-                className={pathname === "/templates" ? "border-b-2 border-primary rounded-none" : ""}
+                className={
+                  pathname === "/templates"
+                    ? "border-b-2 border-primary rounded-none"
+                    : ""
+                }
               >
                 <FileText className="mr-2 h-4 w-4" />
                 Templates
@@ -310,7 +431,11 @@ export function AppShell({ children }: AppShellProps) {
               <Button
                 variant="ghost"
                 size="sm"
-                className={pathname === "/tags" ? "border-b-2 border-primary rounded-none" : ""}
+                className={
+                  pathname === "/tags"
+                    ? "border-b-2 border-primary rounded-none"
+                    : ""
+                }
               >
                 <Hash className="mr-2 h-4 w-4" />
                 Gerenciar Tags
@@ -337,7 +462,10 @@ export function AppShell({ children }: AppShellProps) {
       <main className="p-4 sm:p-6">{children}</main>
 
       {/* New Note Modal */}
-      <NewNoteModal open={showNewNoteModal} onOpenChange={setShowNewNoteModal} />
+      <NewNoteModal
+        open={showNewNoteModal}
+        onOpenChange={setShowNewNoteModal}
+      />
     </div>
-  )
+  );
 }
