@@ -39,6 +39,8 @@ import {
   SheetHeader,
 } from "@/components/ui/sheet";
 import authApi from "@/lib/api/authApi";
+import api from "@/lib/api/api";
+import { Spinner } from "./ui/spinner";
 
 interface User {
   id: string;
@@ -48,21 +50,26 @@ interface User {
   updated_at: string;
 }
 
-interface AppShellProps {
-  children: ReactNode;
-}
-
-type SearchResult = {
+interface SearchResult {
   id: string;
   name: string;
   type: "note" | "notebook" | "tag" | "template";
   snippet?: string;
-};
+}
+
+interface SearchResponse {
+  results: SearchResult[];
+}
+
+interface AppShellProps {
+  children: ReactNode;
+}
 
 export function AppShell({ children }: AppShellProps) {
   const router = useRouter();
   const pathname = usePathname();
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(searchQuery);
   const [showNewNoteModal, setShowNewNoteModal] = useState(false);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [showSearchResults, setShowSearchResults] = useState(false);
@@ -86,46 +93,50 @@ export function AppShell({ children }: AppShellProps) {
     fetchUser();
   }, [router]);
 
+  useEffect(() => {
+    const timerId = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 300);
+
+    return () => {
+      clearTimeout(timerId);
+    };
+  }, [searchQuery]);
+
+  useEffect(() => {
+    const performSearch = async () => {
+      if (debouncedSearchQuery.trim().length < 1) {
+        setShowSearchResults(false);
+        setSearchResults([]);
+        return;
+      }
+
+      setIsSearching(true);
+      setShowSearchResults(true);
+
+      try {
+        const response = await api.get<SearchResponse>("/search/", {
+          params: { q: debouncedSearchQuery },
+        });
+        setSearchResults(response.data.results);
+      } catch (err) {
+        console.error("Erro ao buscar: ", err);
+        setSearchResults([]);
+      } finally {
+        setIsSearching(false);
+      }
+    };
+
+    performSearch();
+  }, [debouncedSearchQuery]);
+
   const handleLogout = () => {
+    localStorage.removeItem("token");
     router.push("/login");
   };
 
-  const handleSearch = async (query: string) => {
+  const handleSearch = (query: string) => {
     setSearchQuery(query);
-
-    if (query.trim().length < 2) {
-      setShowSearchResults(false);
-      return;
-    }
-
-    setIsSearching(true);
-    setShowSearchResults(true);
-
-    const mockResults: SearchResult[] = [
-      {
-        id: "1",
-        name: "Nota sobre React",
-        type: "note",
-        snippet: "Conteúdo sobre hooks...",
-      },
-      { id: "2", name: "Estudos", type: "notebook" },
-      { id: "3", name: "javascript", type: "tag" },
-      {
-        id: "4",
-        name: "Template de Reunião",
-        type: "template",
-        snippet: "Template para reuniões semanais",
-      },
-    ];
-
-    setTimeout(() => {
-      setSearchResults(
-        mockResults.filter((r) =>
-          r.name.toLowerCase().includes(query.toLowerCase())
-        )
-      );
-      setIsSearching(false);
-    }, 300);
   };
 
   const handleResultClick = (result: SearchResult) => {
