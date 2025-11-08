@@ -151,7 +151,7 @@ export function AppShell({ children }: AppShellProps) {
         router.push(`/notes?notebook=${result.id}`);
         break;
       case "tag":
-        router.push(`/notes?tag=${result.id}`);
+        router.push(`/tags?tag=${result.id}`);
         break;
       case "template":
         router.push(`/templates?template=${result.id}`);

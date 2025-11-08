@@ -1,15 +1,21 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import { useSearchParams } from "next/navigation"
-import { AppShell } from "@/components/app-shell"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { ChevronLeft, Plus, Edit2, Trash2 } from "lucide-react"
-import Link from "next/link"
+import { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { AppShell } from "@/components/app-shell";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { ChevronLeft, Plus, Edit2, Trash2 } from "lucide-react";
+import Link from "next/link";
 import {
   Dialog,
   DialogContent,
@@ -17,7 +23,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
+} from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -27,25 +33,31 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
+} from "@/components/ui/alert-dialog";
+import { toast } from "sonner";
+import api from "@/lib/api/api";
+import { Spinner } from "@/components/ui/spinner";
+import { Skeleton } from "@/components/ui/skeleton";
+
+interface Tag {
+  id: string;
+  name: string;
+}
 
 export default function TagsPage() {
-  const searchParams = useSearchParams()
-  const [newTagName, setNewTagName] = useState("")
-  const [showEditDialog, setShowEditDialog] = useState(false)
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
-  const [selectedTag, setSelectedTag] = useState<{ id: string; name: string } | null>(null)
-  const [editTagName, setEditTagName] = useState("")
-
-  // Mock tags data - TODO: Fetch from GET /tags/
-  const [tags, setTags] = useState([
-    { id: "1", name: "estudos", count: 6 },
-    { id: "2", name: "livros", count: 15 },
-    { id: "3", name: "trabalho", count: 3 },
-    { id: "4", name: "mercado", count: 9 },
-    { id: "5", name: "tppe", count: 2 },
-    { id: "6", name: "contas", count: 1 },
-  ])
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [newTagName, setNewTagName] = useState("");
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [selectedTag, setSelectedTag] = useState<Tag | null>(null);
+  const [editTagName, setEditTagName] = useState("");
+  const [tags, setTags] = useState<Tag[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const tagColors = [
     "bg-blue-100 text-blue-700",
@@ -54,57 +66,175 @@ export default function TagsPage() {
     "bg-orange-100 text-orange-700",
     "bg-pink-100 text-pink-700",
     "bg-cyan-100 text-cyan-700",
-  ]
+  ];
 
-  const getTagColor = (index: number) => tagColors[index % tagColors.length]
+  const getTagColor = (index: number) => tagColors[index % tagColors.length];
 
   useEffect(() => {
-    const tagParam = searchParams.get("tag")
-    if (tagParam) {
-      const tag = tags.find((t) => t.name === tagParam)
+    const fetchTags = async () => {
+      try {
+        const response = await api.get<Tag[]>("/tags/");
+        setTags(response.data);
+      } catch (err: any) {
+        console.error("Erro ao buscar tags:", err);
+        if (err.response && err.response.status === 401) {
+          localStorage.removeItem("token");
+          router.push("/login");
+        } else {
+          setError("Não foi possível carregar suas tags. Tente novamente.");
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchTags();
+  }, [router]);
+
+  useEffect(() => {
+    const tagParam = searchParams.get("tag");
+    if (tagParam && tags.length > 0) {
+      const tag = tags.find((t) => t.name === tagParam || t.id === tagParam);
       if (tag) {
-        setSelectedTag(tag)
-        setEditTagName(tag.name)
-        // Scroll to the tag element
+        setSelectedTag(tag);
+        setEditTagName(tag.name);
         setTimeout(() => {
-          const element = document.getElementById(`tag-${tag.id}`)
+          const element = document.getElementById(`tag-${tag.id}`);
           if (element) {
-            element.scrollIntoView({ behavior: "smooth", block: "center" })
-            element.classList.add("ring-2", "ring-primary")
+            element.scrollIntoView({ behavior: "smooth", block: "center" });
+            element.classList.add("ring-2", "ring-primary", "transition-all");
             setTimeout(() => {
-              element.classList.remove("ring-2", "ring-primary")
-            }, 2000)
+              element.classList.remove("ring-2", "ring-primary");
+            }, 2000);
           }
-        }, 100)
+        }, 100);
       }
     }
-  }, [searchParams, tags])
+  }, [searchParams, tags]);
 
-  const handleCreateTag = () => {
-    if (newTagName.trim()) {
-      // TODO: Call POST /tags/ with { name: newTagName }
-      console.log("[v0] Creating tag:", newTagName)
-      setNewTagName("")
+  const handleCreateTag = async () => {
+    if (!newTagName.trim()) return;
+    setIsCreating(true);
+    const toastId = toast.loading("Criando tag...");
+
+    try {
+      const response = await api.post<Tag>("/tags/", {
+        name: newTagName.trim(),
+      });
+      setTags([...tags, response.data]);
+      setNewTagName("");
+      toast.success("Tag criada com sucesso!", { id: toastId });
+    } catch (err: any) {
+      console.error("Erro ao criar tag:", err);
+      if (err.response && err.response.status === 409) {
+        toast.error("Erro ao criar tag", {
+          description: "Uma tag com esse nome já existe.",
+          id: toastId,
+        });
+      } else {
+        toast.error("Erro ao criar tag", {
+          description: "Tente novamente mais tarde.",
+          id: toastId,
+        });
+      }
+    } finally {
+      setIsCreating(false);
     }
+  };
+
+  const handleEditTag = async () => {
+    if (!selectedTag || !editTagName.trim() || isEditing) return;
+    setIsEditing(true);
+    const toastId = toast.loading("Atualizando tag...");
+
+    try {
+      const response = await api.patch<Tag>(`/tags/${selectedTag.id}`, {
+        name: editTagName.trim(),
+      });
+      setTags(tags.map((t) => (t.id === selectedTag.id ? response.data : t)));
+      toast.success("Tag atualizada com sucesso!", { id: toastId });
+      setShowEditDialog(false);
+      setSelectedTag(null);
+      setEditTagName("");
+    } catch (err: any) {
+      console.error("Erro ao editar tag:", err);
+      if (err.response && err.response.status === 409) {
+        toast.error("Erro ao atualizar", {
+          description: "Uma tag com esse nome já existe.",
+          id: toastId,
+        });
+      } else {
+        toast.error("Erro ao atualizar", {
+          description: "Tente novamente mais tarde.",
+          id: toastId,
+        });
+      }
+    } finally {
+      setIsEditing(false);
+    }
+  };
+
+  const handleDeleteTag = async () => {
+    if (!selectedTag || isDeleting) return;
+    setIsDeleting(true);
+    const toastId = toast.loading("Apagando tag...");
+
+    try {
+      await api.delete(`/tags/${selectedTag.id}`);
+      setTags(tags.filter((t) => t.id !== selectedTag.id));
+      toast.success("Tag apagada com sucesso!", { id: toastId });
+      setShowDeleteDialog(false);
+      setSelectedTag(null);
+    } catch (err: any) {
+      console.error("Erro ao apagar tag:", err);
+      toast.error("Erro ao apagar tag", {
+        description: "Tente novamente mais tarde.",
+        id: toastId,
+      });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <AppShell>
+        <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6">
+          <Skeleton className="h-8 w-32" />
+          <Skeleton className="h-10 w-48" />
+          <Card>
+            <CardHeader>
+              <Skeleton className="h-6 w-32" />
+              <Skeleton className="h-4 w-48" />
+            </CardHeader>
+            <CardContent>
+              <Skeleton className="h-10 w-full" />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <Skeleton className="h-6 w-24" />
+              <Skeleton className="h-4 w-40" />
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
+            </CardContent>
+          </Card>
+        </div>
+      </AppShell>
+    );
   }
 
-  const handleEditTag = () => {
-    if (selectedTag && editTagName.trim()) {
-      // TODO: Call PATCH /tags/{id} with { name: editTagName }
-      console.log("[v0] Editing tag:", selectedTag.id, "to:", editTagName)
-      setShowEditDialog(false)
-      setSelectedTag(null)
-      setEditTagName("")
-    }
-  }
-
-  const handleDeleteTag = () => {
-    if (selectedTag) {
-      // TODO: Call DELETE /tags/{id}
-      console.log("[v0] Deleting tag:", selectedTag.id)
-      setShowDeleteDialog(false)
-      setSelectedTag(null)
-    }
+  if (error) {
+    return (
+      <AppShell>
+        <div className="text-center py-10">
+          <p className="text-destructive">{error}</p>
+        </div>
+      </AppShell>
+    );
   }
 
   return (
@@ -121,15 +251,23 @@ export default function TagsPage() {
         </div>
 
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold mb-2">Gerenciar Tags</h1>
-          <p className="text-sm sm:text-base text-muted-foreground">Crie, edite e organize suas tags</p>
+          <h1 className="text-2xl sm:text-3xl font-bold mb-2">
+            Gerenciar Tags
+          </h1>
+          <p className="text-sm sm:text-base text-muted-foreground">
+            Crie, edite e organize suas tags
+          </p>
         </div>
 
         {/* Create New Tag Card */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base sm:text-lg">Criar Nova Tag</CardTitle>
-            <CardDescription className="text-sm">Adicione uma nova tag para organizar suas notas</CardDescription>
+            <CardTitle className="text-base sm:text-lg">
+              Criar Nova Tag
+            </CardTitle>
+            <CardDescription className="text-sm">
+              Adicione uma nova tag para organizar suas notas
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex flex-col sm:flex-row gap-2">
@@ -144,16 +282,21 @@ export default function TagsPage() {
                   onChange={(e) => setNewTagName(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleCreateTag()}
                   className="text-sm"
+                  disabled={isCreating}
                 />
               </div>
               <div className="flex items-end">
                 <Button
                   onClick={handleCreateTag}
-                  disabled={!newTagName.trim()}
+                  disabled={!newTagName.trim() || isCreating}
                   className="w-full sm:w-auto text-xs sm:text-sm"
                 >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Criar Tag
+                  {isCreating ? (
+                    <Spinner className="mr-2" />
+                  ) : (
+                    <Plus className="h-4 w-4 mr-2" />
+                  )}
+                  {isCreating ? "Criando..." : "Criar Tag"}
                 </Button>
               </div>
             </div>
@@ -164,7 +307,9 @@ export default function TagsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base sm:text-lg">Suas Tags</CardTitle>
-            <CardDescription className="text-sm">Gerencie todas as suas tags existentes</CardDescription>
+            <CardDescription className="text-sm">
+              Gerencie todas as suas tags existentes
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
@@ -176,17 +321,20 @@ export default function TagsPage() {
                     className="flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-lg border hover:bg-accent transition-all gap-2"
                   >
                     <div className="flex items-center gap-3">
-                      <Badge className={`${getTagColor(index)} text-xs sm:text-sm`}>{tag.name}</Badge>
-                      <span className="text-xs sm:text-sm text-muted-foreground">{tag.count} notas</span>
+                      <Badge
+                        className={`${getTagColor(index)} text-xs sm:text-sm`}
+                      >
+                        {tag.name}
+                      </Badge>
                     </div>
                     <div className="flex gap-2">
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => {
-                          setSelectedTag(tag)
-                          setEditTagName(tag.name)
-                          setShowEditDialog(true)
+                          setSelectedTag(tag);
+                          setEditTagName(tag.name);
+                          setShowEditDialog(true);
                         }}
                         className="text-xs sm:text-sm"
                       >
@@ -197,8 +345,8 @@ export default function TagsPage() {
                         variant="ghost"
                         size="sm"
                         onClick={() => {
-                          setSelectedTag(tag)
-                          setShowDeleteDialog(true)
+                          setSelectedTag(tag);
+                          setShowDeleteDialog(true);
                         }}
                         className="text-destructive hover:text-destructive text-xs sm:text-sm"
                       >
@@ -210,8 +358,12 @@ export default function TagsPage() {
                 ))
               ) : (
                 <div className="text-center py-8 text-muted-foreground">
-                  <p className="text-sm sm:text-base">Nenhuma tag criada ainda</p>
-                  <p className="text-xs sm:text-sm">Crie sua primeira tag acima</p>
+                  <p className="text-sm sm:text-base">
+                    Nenhuma tag criada ainda
+                  </p>
+                  <p className="text-xs sm:text-sm">
+                    Crie sua primeira tag acima
+                  </p>
                 </div>
               )}
             </div>
@@ -220,7 +372,16 @@ export default function TagsPage() {
       </div>
 
       {/* Edit Tag Dialog */}
-      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+      <Dialog
+        open={showEditDialog}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedTag(null);
+            setEditTagName("");
+          }
+          setShowEditDialog(open);
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Editar Tag</DialogTitle>
@@ -235,38 +396,67 @@ export default function TagsPage() {
                 value={editTagName}
                 onChange={(e) => setEditTagName(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleEditTag()}
+                disabled={isEditing}
               />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowEditDialog(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setShowEditDialog(false)}
+              disabled={isEditing}
+            >
               Cancelar
             </Button>
-            <Button onClick={handleEditTag} disabled={!editTagName.trim()}>
-              Salvar
+            <Button
+              onClick={handleEditTag}
+              disabled={
+                !editTagName.trim() ||
+                isEditing ||
+                editTagName === selectedTag?.name
+              }
+            >
+              {isEditing ? <Spinner className="mr-2" /> : null}
+              {isEditing ? "Salvando..." : "Salvar"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Delete Tag Confirmation Dialog */}
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+      <AlertDialog
+        open={showDeleteDialog}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedTag(null);
+          }
+          setShowDeleteDialog(open);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Apagar Tag</AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja apagar a tag "{selectedTag?.name}"? Esta tag será removida de todas as notas. Esta
-              ação não pode ser desfeita.
+              Tem certeza que deseja apagar a tag "{selectedTag?.name}"? Esta
+              tag será removida de todas as notas. Esta ação não pode ser
+              desfeita.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteTag} className="bg-destructive hover:bg-destructive/90">
-              Apagar
+            <AlertDialogCancel disabled={isDeleting}>
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteTag}
+              className="bg-destructive hover:bg-destructive/90"
+              disabled={isDeleting}
+            >
+              {isDeleting ? <Spinner className="mr-2" /> : null}
+              {isDeleting ? "Apagando..." : "Apagar"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </AppShell>
-  )
+  );
 }
