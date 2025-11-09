@@ -31,6 +31,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Popover,
+  PopoverContent,
+  PopoverAnchor,
+} from "@/components/ui/popover";
 import { Label } from "@/components/ui/label";
 import { TemplateSelectionModal } from "@/components/template-selection-modal";
 import {
@@ -135,6 +140,10 @@ export default function NotesPage() {
   );
   const [isMovingNote, setIsMovingNote] = useState(false);
   const [isSavingNote, setIsSavingNote] = useState(false);
+  const [allUserTags, setAllUserTags] = useState<Tag[]>([]);
+  const [isTagLoading, setIsTagLoading] = useState(false);
+  const [tagSuggestions, setTagSuggestions] = useState<Tag[]>([]);
+  const [showTagSuggestions, setShowTagSuggestions] = useState(false);
 
   const tagColors = [
     "bg-blue-100 text-blue-700 hover:bg-blue-200",
@@ -177,7 +186,17 @@ export default function NotesPage() {
       }
     };
 
+    const fetchTags = async () => {
+      try {
+        const response = await api.get<Tag[]>("/tags/");
+        setAllUserTags(response.data);
+      } catch (err) {
+        console.error("Erro ao buscar todas as tags: ", err);
+      }
+    };
+
     fetchNotebooks();
+    fetchTags();
   }, [router]);
 
   useEffect(() => {
@@ -244,16 +263,121 @@ export default function NotesPage() {
     }
   }, [selectedNote, notes]);
 
-  // --- Funções (sem alteração) ---
-  const handleAddTag = () => {
-    if (newTag.trim()) {
-      setNoteTags([...noteTags, newTag.trim()]);
+  useEffect(() => {
+    if (newTag.trim().length > 0) {
+      const noteTagIds = new Set(noteTags.map((t) => t.id));
+
+      const filtered = allUserTags.filter(
+        (tag) =>
+          !noteTagIds.has(tag.id) &&
+          tag.name.toLowerCase().includes(newTag.toLowerCase())
+      );
+
+      setTagSuggestions(filtered);
+      setShowTagSuggestions(filtered.length > 0);
+    } else {
+      setTagSuggestions([]);
+      setShowTagSuggestions(false);
+    }
+  }, [newTag, allUserTags, noteTags]);
+
+  const handleAddTag = async () => {
+    if (!newTag.trim() || !selectedNote) return;
+
+    if (
+      noteTags.some((t) => t.name.toLowerCase() === newTag.trim().toLowerCase())
+    ) {
+      toast.info("Tag já adicionada a esta nota.");
       setNewTag("");
+      return;
+    }
+
+    const note = notes.find((n) => n.id === selectedNote);
+    if (!note) return;
+
+    setIsTagLoading(true);
+    const toastId = toast.loading("Adicionando tag...");
+
+    try {
+      let tagToAdd: Tag | undefined = allUserTags.find(
+        (t) => t.name.toLowerCase() === newTag.trim().toLowerCase()
+      );
+
+      if (!tagToAdd) {
+        const createTagResponse = await api.post<Tag>("/tags/", {
+          name: newTag.trim(),
+        });
+        tagToAdd = createTagResponse.data;
+        setAllUserTags([...allUserTags, tagToAdd]);
+      }
+
+      await api.post(
+        `/notebooks/${note.notebook_id}/notes/${note.id}/tags/${tagToAdd.id}`
+      );
+
+      setNoteTags([...noteTags, tagToAdd]);
+      setNewTag("");
+      toast.success("Tag adicionada!", { id: toastId });
+    } catch (err: any) {
+      console.error("Erro ao adicionar tag:", err);
+      if (err.response && err.response.status === 409) {
+        toast.error("Erro: A tag já existe.", { id: toastId });
+      } else {
+        toast.error("Erro ao adicionar tag.", { id: toastId });
+      }
+    } finally {
+      setIsTagLoading(false);
     }
   };
 
-  const handleRemoveTag = (tagToRemove: string) => {
-    setNoteTags(noteTags.filter((tag) => tag !== tagToRemove));
+  const handleRemoveTag = async (tagIdToRemove: string) => {
+    if (!selectedNote) return;
+    const note = notes.find((n) => n.id === selectedNote);
+    if (!note) return;
+
+    const toasId = toast.loading("Removendo tag...");
+
+    try {
+      await api.delete(
+        `/notebooks/${note.notebook_id}/notes/${note.id}/tags/${tagIdToRemove}`
+      );
+      setNoteTags(noteTags.filter((tag) => tag.id !== tagIdToRemove));
+      toast.success("Tag removida.", { id: toasId });
+    } catch (err) {
+      console.error("Erro ao remover tag: ", err);
+      toast.error("Erro ao remover tag.", { id: toasId });
+    }
+  };
+
+  const handleAssociateTag = async (tag: Tag) => {
+    if (!selectedNote) return;
+    const note = notes.find((n) => n.id === selectedNote);
+    if (!note) return;
+
+    if (noteTags.some((t) => t.id === tag.id)) {
+      setNewTag("");
+      setShowTagSuggestions(false);
+      return;
+    }
+
+    setIsTagLoading(true);
+    const toastId = toast.loading("Adicionando tag...");
+
+    try {
+      await api.post(
+        `/notebooks/${note.notebook_id}/notes/${note.id}/tags/${tag.id}`
+      );
+
+      setNoteTags([...noteTags, tag]);
+      setNewTag("");
+      setShowTagSuggestions(false);
+      toast.success("Tag adicionada!", { id: toastId });
+    } catch (err: any) {
+      console.error("Erro ao associar tag:", err);
+      toast.error("Erro ao associar tag.", { id: toastId });
+    } finally {
+      setIsTagLoading(false);
+    }
   };
 
   const handleCreateNotebook = async () => {
@@ -992,7 +1116,7 @@ export default function NotesPage() {
                                 key={tag.id}
                                 className={`text-xs ${getTagColor(tagIndex)}`}
                               >
-                                {tag.id}
+                                {tag.name}
                               </Badge>
                             ))}
                         </div>
@@ -1026,18 +1150,54 @@ export default function NotesPage() {
                     {tag.name}
                   </Badge>
                 ))}
-                <div className="flex items-center gap-2">
-                  <Input
-                    value={newTag}
-                    onChange={(e) => setNewTag(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleAddTag()}
-                    placeholder="nova tag"
-                    className="h-7 w-20 sm:w-24 text-xs"
-                  />
-                  <Button size="sm" variant="ghost" onClick={handleAddTag}>
-                    <Plus className="h-3 w-3" />
-                  </Button>
-                </div>
+                <Popover
+                  open={showTagSuggestions}
+                  onOpenChange={setShowTagSuggestions}
+                >
+                  <PopoverAnchor asChild>
+                    <div className="flex items-center gap-2 relative">
+                      <Input
+                        value={newTag}
+                        onChange={(e) => setNewTag(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && handleAddTag()}
+                        placeholder={
+                          isTagLoading ? "Adicionando..." : "nova tag"
+                        }
+                        className="h-7 w-20 sm:w-24 text-xs"
+                        disabled={isTagLoading}
+                        autoComplete="off" // Previne o autocomplete do navegador
+                      />
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={handleAddTag}
+                        disabled={isTagLoading}
+                      >
+                        {isTagLoading ? (
+                          <Spinner className="h-3 w-3" />
+                        ) : (
+                          <Plus className="h-3 w-3" />
+                        )}
+                      </Button>
+                    </div>
+                  </PopoverAnchor>
+                  <PopoverContent
+                    className="w-[150px] p-1" // Ajuste a largura conforme necessário
+                    onOpenAutoFocus={(e) => e.preventDefault()} // Impede o popover de roubar o foco do input
+                  >
+                    <div className="max-h-48 overflow-y-auto">
+                      {tagSuggestions.map((tag) => (
+                        <button
+                          key={tag.id}
+                          className="w-full text-left p-2 text-xs rounded-sm hover:bg-accent"
+                          onClick={() => handleAssociateTag(tag)} // Usa o novo handler
+                        >
+                          {tag.name}
+                        </button>
+                      ))}
+                    </div>
+                  </PopoverContent>
+                </Popover>
               </div>
 
               {/* Formatting Toolbar */}
