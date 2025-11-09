@@ -124,6 +124,16 @@ export default function NotesPage() {
   const [showNotebookSheet, setShowNotebookSheet] = useState(false);
   const [showNoteSheet, setShowNoteSheet] = useState(false);
   const [isCreatingNotebook, setIsCreatingNotebook] = useState(false);
+  const [isRenamingNotebook, setIsRenamingNotebook] = useState(false);
+  const [isDeletingNotebook, setIsDeletingNotebook] = useState(false);
+  const [isDeletingNote, setIsDeletingNote] = useState(false);
+  const [togglingFavoriteNotes, setTogglingFavoriteNotes] = useState(
+    new Set<string>()
+  );
+  const [togglingFavoriteNotebooks, setTogglingFavoriteNotebooks] = useState(
+    new Set<string>()
+  );
+  const [isMovingNote, setIsMovingNote] = useState(false);
 
   const tagColors = [
     "bg-blue-100 text-blue-700 hover:bg-blue-200",
@@ -195,6 +205,10 @@ export default function NotesPage() {
         }
 
         setNotes(response.data);
+
+        if (response.data.length > 0) {
+          setSelectedNote(response.data[0].id);
+        }
       } catch (err: any) {
         console.error("Erro ao buscar notas: ", err);
         setNotes([]);
@@ -284,29 +298,75 @@ export default function NotesPage() {
     }
   };
 
-  const handleRenameNotebook = () => {
-    // TODO: Call PATCH /notebooks/{id} with new name
-    console.log(
-      "[v0] Renaming notebook:",
-      notebookToRename,
-      "to:",
-      renameNotebookValue
-    );
-    setShowRenameNotebookModal(false);
-    setNotebookToRename(null);
-    setRenameNotebookValue("");
+  const handleRenameNotebook = async () => {
+    if (!notebookToRename || !renameNotebookValue.trim()) {
+      toast.error("O nome do caderno não pode ficar vazio.");
+      return;
+    }
+
+    setIsRenamingNotebook(true);
+
+    const toastId = toast.loading("Renomeando caderno...");
+
+    try {
+      const response = await api.patch<Notebook>(
+        `/notebooks/${notebookToRename}`,
+        {
+          name: renameNotebookValue.trim(),
+        }
+      );
+
+      setNotebooks((prev) =>
+        prev.map((nb) => (nb.id === notebookToRename ? response.data : nb))
+      );
+
+      toast.success("Caderno renomeado com sucesso!", { id: toastId });
+      setShowRenameNotebookModal(false);
+      setNotebookToRename(null);
+      setRenameNotebookValue("");
+    } catch (err: any) {
+      console.error("Erro ao renomear caderno:", err);
+      if (err.response && err.response.status === 409) {
+        toast.error("Erro: Já existe um caderno com esse nome.", {
+          id: toastId,
+        });
+      } else {
+        toast.error("Erro ao renomear caderno. Tente novamente.", {
+          id: toastId,
+        });
+      }
+    } finally {
+      setIsRenamingNotebook(false);
+    }
   };
 
-  const handleMoveNote = (targetNotebookId: string) => {
-    // TODO: Call PATCH /notebooks/{notebook_id}/notes/{note_id} with new notebook_id
-    console.log(
-      "[v0] Moving note:",
-      noteToMove,
-      "to notebook:",
-      targetNotebookId
-    );
-    setShowMoveNoteDialog(false);
-    setNoteToMove(null);
+  const handleMoveNote = async (targetNotebookId: string) => {
+    const noteToMoveObj = notes.find((n) => n.id === noteToMove);
+    if (!noteToMoveObj || isMovingNote) return;
+
+    setIsMovingNote(true);
+    const toastId = toast.loading("Movendo nota...");
+
+    try {
+      await api.patch(
+        `/notebooks/${noteToMoveObj.notebook_id}/notes/${noteToMoveObj.id}`,
+        { notebook_id: targetNotebookId }
+      );
+
+      setNotes((prev) => prev.filter((n) => n.id !== noteToMove));
+
+      if (selectedNote === noteToMove) {
+        setSelectedNote(null);
+      }
+
+      toast.success("Nota movida com sucesso!", { id: toastId });
+    } catch (err: any) {
+      console.error("Erro ao mover nota:", err);
+      toast.error("Erro ao mover nota. Tente novamente.", { id: toastId });
+    } finally {
+      setIsMovingNote(false);
+      setNoteToMove(null);
+    }
   };
 
   const applyFormatting = (format: string) => {
@@ -314,36 +374,125 @@ export default function NotesPage() {
     console.log("Apply formatting:", format);
   };
 
-  const toggleNoteFavorite = (noteId: string) => {
+  const toggleNoteFavorite = async (noteId: string) => {
+    const note = notes.find((n) => n.id === noteId);
+    if (!note || togglingFavoriteNotes.has(noteId)) return;
+
+    const newIsFavorite = !favoriteNotes.includes(noteId);
+    setTogglingFavoriteNotes((prev) => new Set(prev).add(noteId));
     setFavoriteNotes((prev) =>
-      prev.includes(noteId)
-        ? prev.filter((id) => id !== noteId)
-        : [...prev, noteId]
+      newIsFavorite ? [...prev, noteId] : prev.filter((id) => id !== noteId)
     );
+
+    try {
+      await api.patch(`/notebooks/${note.notebook_id}/notes/${note.id}`, {
+        is_favorite: newIsFavorite,
+      });
+    } catch (err) {
+      console.error("Erro ao favoritar nota:", err);
+      toast.error("Erro ao atualizar favorito.");
+
+      setFavoriteNotes((prev) =>
+        newIsFavorite ? prev.filter((id) => id !== noteId) : [...prev, noteId]
+      );
+    } finally {
+      setTogglingFavoriteNotes((prev) => {
+        const next = new Set(prev);
+        next.delete(noteId);
+        return next;
+      });
+    }
   };
 
-  const toggleNotebookFavorite = (notebookId: string) => {
+  const toggleNotebookFavorite = async (notebookId: string) => {
+    if (notebookId === "all" || togglingFavoriteNotebooks.has(notebookId))
+      return;
+
+    const newIsFavorite = !favoriteNotebooks.includes(notebookId);
+
+    setTogglingFavoriteNotebooks((prev) => new Set(prev).add(notebookId));
     setFavoriteNotebooks((prev) =>
-      prev.includes(notebookId)
-        ? prev.filter((id) => id !== notebookId)
-        : [...prev, notebookId]
+      newIsFavorite
+        ? [...prev, notebookId]
+        : prev.filter((id) => id !== notebookId)
     );
+
+    try {
+      await api.patch(`/notebooks/${notebookId}`, {
+        is_favorite: newIsFavorite,
+      });
+    } catch (err) {
+      console.error("Erro ao favoritar caderno:", err);
+      toast.error("Erro ao atualizar favorito.");
+
+      setFavoriteNotebooks((prev) =>
+        newIsFavorite
+          ? prev.filter((id) => id !== notebookId)
+          : [...prev, notebookId]
+      );
+    } finally {
+      setTogglingFavoriteNotebooks((prev) => {
+        const next = new Set(prev);
+        next.delete(notebookId);
+        return next;
+      });
+    }
   };
 
   const handleCreateTemplateFromNote = () => {
     setShowCreateTemplateModal(true);
   };
 
-  const handleDeleteNote = () => {
-    // TODO: Delete note logic
-    setShowDeleteNoteDialog(false);
-    setSelectedNote(null);
+  const handleDeleteNote = async () => {
+    const noteToDelete = notes.find((n) => n.id === selectedNote);
+    if (!noteToDelete) return;
+
+    setIsDeletingNote(true);
+    const toastId = toast.loading("Apagando nota...");
+
+    try {
+      await api.delete(
+        `/notebooks/${noteToDelete.notebook_id}/notes/${noteToDelete.id}`
+      );
+
+      setNotes((prev) => prev.filter((n) => n.id !== selectedNote));
+
+      setSelectedNote(null);
+
+      toast.success("Nota apagada com sucesso!", { id: toastId });
+      setShowDeleteNoteDialog(false);
+    } catch (err: any) {
+      console.error("Erro ao apagar nota:", err);
+      toast.error("Erro ao apagar nota. Tente novamente.", { id: toastId });
+    } finally {
+      setIsDeletingNote(false);
+    }
   };
 
-  const handleDeleteNotebook = () => {
-    // TODO: Delete notebook logic
-    setShowDeleteNotebookDialog(false);
-    setNotebookToDelete(null);
+  const handleDeleteNotebook = async () => {
+    if (!notebookToDelete) return;
+
+    setIsDeletingNotebook(true);
+    const toastId = toast.loading("Apagando caderno...");
+
+    try {
+      await api.delete(`/notebooks/${notebookToDelete}`);
+
+      setNotebooks((prev) => prev.filter((nb) => nb.id !== notebookToDelete));
+
+      if (selectedNotebook === notebookToDelete) {
+        setSelectedNotebook("all");
+      }
+
+      toast.success("Caderno apagado com sucesso!", { id: toastId });
+      setShowDeleteNotebookDialog(false);
+      setNotebookToDelete(null);
+    } catch (err: any) {
+      console.error("Erro ao apagar caderno:", err);
+      toast.error("Erro ao apagar caderno. Tente novamente.", { id: toastId });
+    } finally {
+      setIsDeletingNotebook(false);
+    }
   };
   // --- Fim Funções ---
 
@@ -404,6 +553,9 @@ export default function NotesPage() {
                               onClick={() =>
                                 toggleNotebookFavorite(notebook.id)
                               }
+                              disabled={togglingFavoriteNotebooks.has(
+                                notebook.id
+                              )}
                               className="shrink-0 text-muted-foreground hover:text-[#F6A800] transition-colors"
                             >
                               <Star
@@ -431,37 +583,38 @@ export default function NotesPage() {
                                 </span>
                               </div>
                             </button>
-                            {notebook.id !== "all" && (
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <button className="shrink-0 text-muted-foreground hover:text-foreground transition-colors">
-                                    <MoreVertical className="h-4 w-4" />
-                                  </button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent>
-                                  <DropdownMenuItem
-                                    onClick={() => {
-                                      setNotebookToRename(notebook.id);
-                                      setRenameNotebookValue(notebook.name);
-                                      setShowRenameNotebookModal(true);
-                                    }}
-                                  >
-                                    <Edit2 className="h-4 w-4 mr-2" />
-                                    Renomear
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    onClick={() => {
-                                      setNotebookToDelete(notebook.id);
-                                      setShowDeleteNotebookDialog(true);
-                                    }}
-                                    className="text-destructive focus:text-destructive"
-                                  >
-                                    <Trash2 className="h-4 w-4 mr-2" />
-                                    Apagar Caderno
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            )}
+                            {notebook.id !== "all" &&
+                              notebook.name !== "Capturas Rápidas" && (
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <button className="shrink-0 text-muted-foreground hover:text-foreground transition-colors">
+                                      <MoreVertical className="h-4 w-4" />
+                                    </button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent>
+                                    <DropdownMenuItem
+                                      onClick={() => {
+                                        setNotebookToRename(notebook.id);
+                                        setRenameNotebookValue(notebook.name);
+                                        setShowRenameNotebookModal(true);
+                                      }}
+                                    >
+                                      <Edit2 className="h-4 w-4 mr-2" />
+                                      Renomear
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onClick={() => {
+                                        setNotebookToDelete(notebook.id);
+                                        setShowDeleteNotebookDialog(true);
+                                      }}
+                                      className="text-destructive focus:text-destructive"
+                                    >
+                                      <Trash2 className="h-4 w-4 mr-2" />
+                                      Apagar Caderno
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              )}
                           </div>
                         ))}
                       </div>
@@ -520,6 +673,7 @@ export default function NotesPage() {
                         <div className="flex items-start gap-2">
                           <button
                             onClick={() => toggleNoteFavorite(note.id)}
+                            disabled={togglingFavoriteNotes.has(note.id)}
                             className="shrink-0 mt-1 text-muted-foreground hover:text-[#F6A800] transition-colors"
                           >
                             <Star
@@ -561,11 +715,12 @@ export default function NotesPage() {
                                         .filter(
                                           (nb) =>
                                             nb.id !== "all" &&
-                                            nb.id !== selectedNotebook
+                                            nb.id !== note.notebook_id
                                         )
                                         .map((notebook) => (
                                           <DropdownMenuItem
                                             key={notebook.id}
+                                            disabled={isMovingNote}
                                             onClick={() => {
                                               setNoteToMove(note.id);
                                               handleMoveNote(notebook.id);
@@ -627,6 +782,7 @@ export default function NotesPage() {
                     <div key={notebook.id} className="flex items-center gap-2">
                       <button
                         onClick={() => toggleNotebookFavorite(notebook.id)}
+                        disabled={togglingFavoriteNotebooks.has(notebook.id)}
                         className="shrink-0 text-muted-foreground hover:text-[#F6A800] transition-colors"
                       >
                         <Star
@@ -649,37 +805,38 @@ export default function NotesPage() {
                           <span className="truncate">{notebook.name}</span>
                         </div>
                       </button>
-                      {notebook.id !== "all" && (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <button className="shrink-0 text-muted-foreground hover:text-foreground transition-colors">
-                              <MoreVertical className="h-4 w-4" />
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent>
-                            <DropdownMenuItem
-                              onClick={() => {
-                                setNotebookToRename(notebook.id);
-                                setRenameNotebookValue(notebook.name);
-                                setShowRenameNotebookModal(true);
-                              }}
-                            >
-                              <Edit2 className="h-4 w-4 mr-2" />
-                              Renomear
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => {
-                                setNotebookToDelete(notebook.id);
-                                setShowDeleteNotebookDialog(true);
-                              }}
-                              className="text-destructive focus:text-destructive"
-                            >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Apagar Caderno
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      )}
+                      {notebook.id !== "all" &&
+                        notebook.name !== "Capturas Rápidas" && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button className="shrink-0 text-muted-foreground hover:text-foreground transition-colors">
+                                <MoreVertical className="h-4 w-4" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent>
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setNotebookToRename(notebook.id);
+                                  setRenameNotebookValue(notebook.name);
+                                  setShowRenameNotebookModal(true);
+                                }}
+                              >
+                                <Edit2 className="h-4 w-4 mr-2" />
+                                Renomear
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setNotebookToDelete(notebook.id);
+                                  setShowDeleteNotebookDialog(true);
+                                }}
+                                className="text-destructive focus:text-destructive"
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Apagar Caderno
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
                     </div>
                   ))}
                 </div>
@@ -728,6 +885,7 @@ export default function NotesPage() {
                     <div className="flex items-start gap-2">
                       <button
                         onClick={() => toggleNoteFavorite(note.id)}
+                        disabled={togglingFavoriteNotes.has(note.id)}
                         className="shrink-0 mt-1 text-muted-foreground hover:text-[#F6A800] transition-colors"
                       >
                         <Star
@@ -766,11 +924,12 @@ export default function NotesPage() {
                                     .filter(
                                       (nb) =>
                                         nb.id !== "all" &&
-                                        nb.id !== selectedNotebook
+                                        nb.id !== note.notebook_id
                                     )
                                     .map((notebook) => (
                                       <DropdownMenuItem
                                         key={notebook.id}
+                                        disabled={isMovingNote}
                                         onClick={() => {
                                           setNoteToMove(note.id);
                                           handleMoveNote(notebook.id);
@@ -983,11 +1142,14 @@ export default function NotesPage() {
             <Button
               variant="outline"
               onClick={() => setShowNewNotebookModal(false)}
-              disabled = {isCreatingNotebook}
+              disabled={isCreatingNotebook}
             >
               Cancelar
             </Button>
-            <Button onClick={handleCreateNotebook} disabled={isCreatingNotebook}>
+            <Button
+              onClick={handleCreateNotebook}
+              disabled={isCreatingNotebook}
+            >
               {isCreatingNotebook && <Spinner className="mr-2" />}
               {isCreatingNotebook ? "Criando..." : "Criar"}
             </Button>
@@ -1021,10 +1183,17 @@ export default function NotesPage() {
             <Button
               variant="outline"
               onClick={() => setShowRenameNotebookModal(false)}
+              disabled={isRenamingNotebook}
             >
               Cancelar
             </Button>
-            <Button onClick={handleRenameNotebook}>Renomear</Button>
+            <Button
+              onClick={handleRenameNotebook}
+              disabled={isRenamingNotebook}
+            >
+              {isRenamingNotebook && <Spinner className="mr-2" />}
+              {isRenamingNotebook ? "Renomeando..." : "Renomear"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1087,12 +1256,16 @@ export default function NotesPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeletingNote}>
+              Cancelar
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteNote}
               className="bg-destructive hover:bg-destructive/90"
+              disabled={isDeletingNote}
             >
-              Apagar
+              {isDeletingNote && <Spinner className="mr-2" />}
+              {isDeletingNote ? "Apagando..." : "Apagar"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1112,12 +1285,16 @@ export default function NotesPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeletingNotebook}>
+              Cancelar
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteNotebook}
               className="bg-destructive hover:bg-destructive/90"
+              disabled={isDeletingNotebook}
             >
-              Apagar
+              {isDeletingNotebook && <Spinner className="mr-2" />}
+              {isDeletingNotebook ? "Apagando..." : "Apagar"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
