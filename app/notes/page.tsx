@@ -134,6 +134,7 @@ export default function NotesPage() {
     new Set<string>()
   );
   const [isMovingNote, setIsMovingNote] = useState(false);
+  const [isSavingNote, setIsSavingNote] = useState(false);
 
   const tagColors = [
     "bg-blue-100 text-blue-700 hover:bg-blue-200",
@@ -372,6 +373,37 @@ export default function NotesPage() {
   const applyFormatting = (format: string) => {
     // TODO: Implement markdown formatting
     console.log("Apply formatting:", format);
+  };
+
+  const handleSaveNote = async () => {
+    if (!selectedNote) return;
+
+    const noteToSave = notes.find((n) => n.id === selectedNote);
+    if (!noteToSave) return;
+
+    setIsSavingNote(true);
+    const toastId = toast.loading("Salvando nota...");
+
+    try {
+      const response = await api.patch<Note>(
+        `/notebooks/${noteToSave.notebook_id}/notes/${noteToSave.id}`,
+        {
+          title: noteTitle,
+          content: noteContent,
+        }
+      );
+
+      setNotes((prev) =>
+        prev.map((n) => (n.id === selectedNote ? response.data : n))
+      );
+
+      toast.success("Nota salva com sucesso!", { id: toastId });
+    } catch (err) {
+      console.error("Erro ao salvar nota:", err);
+      toast.error("Erro ao salvar nota. Tente novamente.", { id: toastId });
+    } finally {
+      setIsSavingNote(false);
+    }
   };
 
   const toggleNoteFavorite = async (noteId: string) => {
@@ -1107,8 +1139,13 @@ export default function NotesPage() {
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-              <Button className="w-full sm:w-auto sm:ml-auto text-xs sm:text-sm">
-                Salvar
+              <Button
+                className="w-full sm:w-auto sm:ml-auto text-xs sm:text-sm"
+                onClick={handleSaveNote}
+                disabled={!selectedNote || isSavingNote}
+              >
+                {isSavingNote && <Spinner className="mr-2" />}
+                {isSavingNote ? "Salvando..." : "Salvar"}
               </Button>
             </div>
           </div>
