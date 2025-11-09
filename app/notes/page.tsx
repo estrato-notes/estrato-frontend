@@ -1,11 +1,12 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { AppShell } from "@/components/app-shell"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
-import { Badge } from "@/components/ui/badge"
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { AppShell } from "@/components/app-shell";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import {
   ChevronLeft,
   Plus,
@@ -19,8 +20,9 @@ import {
   Trash2,
   Edit2,
   FolderInput,
-} from "lucide-react"
-import Link from "next/link"
+  FileText,
+} from "lucide-react";
+import Link from "next/link";
 import {
   Dialog,
   DialogContent,
@@ -28,9 +30,9 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
-import { Label } from "@/components/ui/label"
-import { TemplateSelectionModal } from "@/components/template-selection-modal"
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { TemplateSelectionModal } from "@/components/template-selection-modal";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -39,7 +41,7 @@ import {
   DropdownMenuSub,
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
-} from "@/components/ui/dropdown-menu"
+} from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -49,37 +51,79 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
+} from "@/components/ui/alert-dialog";
+
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import api from "@/lib/api/api";
+import { Spinner } from "@/components/ui/spinner";
+import { toast } from "sonner";
+
+interface Tag {
+  id: string;
+  name: string;
+}
+
+interface Notebook {
+  id: string;
+  name: string;
+  is_favorite: boolean;
+  created_at: string;
+  updated_at: string | null;
+}
+
+interface Note {
+  id: string;
+  title: string;
+  content: string | null;
+  is_favorite: boolean;
+  notebook_id: string;
+  created_at: string;
+  updated_at: string | null;
+  tags: Tag[];
+}
 
 export default function NotesPage() {
-  const [selectedNotebook, setSelectedNotebook] = useState("all")
-  const [selectedNote, setSelectedNote] = useState<number | null>(1)
-  const [noteTitle, setNoteTitle] = useState("Título Nota")
-  const [noteContent, setNoteContent] = useState("# Nova Nota\n\nComece a escrever aqui...")
-  const [noteTags, setNoteTags] = useState(["nova tag"])
-  const [newTag, setNewTag] = useState("")
-  const [showNewNotebookModal, setShowNewNotebookModal] = useState(false)
-  const [showTemplateModal, setShowTemplateModal] = useState(false)
-  const [newNotebookName, setNewNotebookName] = useState("")
-  const [favoriteNotes, setFavoriteNotes] = useState<number[]>([1])
-  const [favoriteNotebooks, setFavoriteNotebooks] = useState<string[]>(["estudos"])
-  const [showCreateTemplateModal, setShowCreateTemplateModal] = useState(false)
-  const [showDeleteNoteDialog, setShowDeleteNoteDialog] = useState(false)
-  const [showDeleteNotebookDialog, setShowDeleteNotebookDialog] = useState(false)
-  const [notebookToDelete, setNotebookToDelete] = useState<string | null>(null)
-  const [showRenameNotebookModal, setShowRenameNotebookModal] = useState(false)
-  const [notebookToRename, setNotebookToRename] = useState<string | null>(null)
-  const [renameNotebookValue, setRenameNotebookValue] = useState("")
-  const [showMoveNoteDialog, setShowMoveNoteDialog] = useState(false)
-  const [noteToMove, setNoteToMove] = useState<number | null>(null)
+  const router = useRouter();
+  const [notebooks, setNotebooks] = useState<Notebook[]>([]);
+  const [notes, setNotes] = useState<Note[]>([]);
 
-  const notebooks = [
-    { id: "all", name: "Todas as Notas", count: 30 },
-    { id: "estudos", name: "Estudos", count: 4 },
-    { id: "financas", name: "Finanças", count: 5 },
-    { id: "ingles", name: "Inglês", count: 1 },
-    { id: "outros", name: "Outros", count: 20 },
-  ]
+  const [isLoadingNotebooks, setIsLoadingNotebooks] = useState(true);
+  const [isLoadingNotes, setIsLoadingNotes] = useState(false);
+  const [isLoadingNoteContent, setIsLoadingNoteContent] = useState(false);
+
+  const [selectedNotebook, setSelectedNotebook] = useState<string | null>(null);
+  const [selectedNote, setSelectedNote] = useState<string | null>(null);
+
+  const [noteTitle, setNoteTitle] = useState("");
+  const [noteContent, setNoteContent] = useState("");
+  const [noteTags, setNoteTags] = useState<Tag[]>([]);
+  const [newTag, setNewTag] = useState("");
+
+  const [favoriteNotes, setFavoriteNotes] = useState<string[]>([]);
+  const [favoriteNotebooks, setFavoriteNotebooks] = useState<string[]>([]);
+
+  const [showNewNotebookModal, setShowNewNotebookModal] = useState(false);
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [newNotebookName, setNewNotebookName] = useState("");
+  const [showCreateTemplateModal, setShowCreateTemplateModal] = useState(false);
+  const [showDeleteNoteDialog, setShowDeleteNoteDialog] = useState(false);
+  const [showDeleteNotebookDialog, setShowDeleteNotebookDialog] =
+    useState(false);
+  const [notebookToDelete, setNotebookToDelete] = useState<string | null>(null);
+  const [showRenameNotebookModal, setShowRenameNotebookModal] = useState(false);
+  const [notebookToRename, setNotebookToRename] = useState<string | null>(null);
+  const [renameNotebookValue, setRenameNotebookValue] = useState("");
+  const [showMoveNoteDialog, setShowMoveNoteDialog] = useState(false);
+  const [noteToMove, setNoteToMove] = useState<string | null>(null);
+  const [showNotebookSheet, setShowNotebookSheet] = useState(false);
+  const [showNoteSheet, setShowNoteSheet] = useState(false);
+  const [isCreatingNotebook, setIsCreatingNotebook] = useState(false);
 
   const tagColors = [
     "bg-blue-100 text-blue-700 hover:bg-blue-200",
@@ -88,79 +132,228 @@ export default function NotesPage() {
     "bg-orange-100 text-orange-700 hover:bg-orange-200",
     "bg-pink-100 text-pink-700 hover:bg-pink-200",
     "bg-cyan-100 text-cyan-700 hover:bg-cyan-200",
-  ]
+  ];
 
-  const getTagColor = (index: number) => tagColors[index % tagColors.length]
+  const getTagColor = (index: number) => tagColors[index % tagColors.length];
 
-  const notes = [
-    { id: 1, title: "Título da Nota", content: "Descrição da Nota...", tags: ["eda2", "hash"], time: "agora" },
-    { id: 2, title: "Título da Nota", content: "Descrição da Nota...", tags: ["eda2", "hash"], time: "agora" },
-    { id: 3, title: "Título da Nota", content: "Descrição da Nota...", tags: [], time: "agora" },
-    { id: 4, title: "Título da Nota", content: "Descrição da Nota...", tags: ["eda2", "hash"], time: "agora" },
-  ]
+  useEffect(() => {
+    const fetchNotebooks = async () => {
+      setIsLoadingNotebooks(true);
+      try {
+        const response = await api.get<Notebook[]>("/notebooks/");
 
+        setFavoriteNotebooks(
+          response.data.filter((nb) => nb.is_favorite).map((nb) => nb.id)
+        );
+
+        const allNotesNotebook: Notebook = {
+          id: "all",
+          name: "Todas as Notas",
+          is_favorite: false,
+          created_at: "",
+          updated_at: null,
+        };
+
+        setNotebooks([allNotesNotebook, ...response.data]);
+        setSelectedNotebook("all");
+      } catch (err: any) {
+        console.error("Erro ao buscar cadernos: ", err);
+        if (err.response && err.response.status === 401) {
+          router.push("/login");
+        }
+      } finally {
+        setIsLoadingNotebooks(false);
+      }
+    };
+
+    fetchNotebooks();
+  }, [router]);
+
+  useEffect(() => {
+    const fetchNotes = async () => {
+      setSelectedNote(null);
+      setNoteTitle("");
+      setNoteContent("");
+      setNoteTags([]);
+
+      if (!selectedNotebook) {
+        setNotes([]);
+        return;
+      }
+
+      setIsLoadingNotes(true);
+
+      try {
+        let response;
+
+        if (selectedNotebook === "all") {
+          response = await api.get<Note[]>("/notes/");
+        } else {
+          response = await api.get<Note[]>(
+            `/notebooks/${selectedNotebook}/notes/`
+          );
+        }
+
+        setNotes(response.data);
+      } catch (err: any) {
+        console.error("Erro ao buscar notas: ", err);
+        setNotes([]);
+        if (err.response && err.response.status === 401) {
+          router.push("/login");
+        }
+      } finally {
+        setIsLoadingNotes(false);
+      }
+    };
+
+    fetchNotes();
+  }, [selectedNotebook, router]);
+
+  useEffect(() => {
+    if (!selectedNote) {
+      setNoteTitle("");
+      setNoteContent("");
+      setNoteTags([]);
+      return;
+    }
+
+    const note = notes.find((n) => n.id === selectedNote);
+
+    if (note) {
+      setIsLoadingNoteContent(true);
+      setNoteTitle(note.title);
+      setNoteContent(note.content || "");
+      setNoteTags(note.tags || []);
+
+      setIsLoadingNoteContent(false);
+    }
+  }, [selectedNote, notes]);
+
+  // --- Funções (sem alteração) ---
   const handleAddTag = () => {
     if (newTag.trim()) {
-      setNoteTags([...noteTags, newTag.trim()])
-      setNewTag("")
+      setNoteTags([...noteTags, newTag.trim()]);
+      setNewTag("");
     }
-  }
+  };
 
   const handleRemoveTag = (tagToRemove: string) => {
-    setNoteTags(noteTags.filter((tag) => tag !== tagToRemove))
-  }
+    setNoteTags(noteTags.filter((tag) => tag !== tagToRemove));
+  };
 
-  const handleCreateNotebook = () => {
-    // TODO: Create notebook logic
-    setShowNewNotebookModal(false)
-    setNewNotebookName("")
-  }
+  const handleCreateNotebook = async () => {
+    if (!newNotebookName.trim()) {
+      toast.error("O nome do caderno não pose estar vazio.");
+      return;
+    }
+
+    setIsCreatingNotebook(true);
+    const toastId = toast.loading("Criando caderno...");
+
+    try {
+      const response = await api.post<Notebook>("/notebooks", {
+        name: newNotebookName.trim(),
+      });
+
+      const newNotebook = response.data;
+
+      setNotebooks((prev) => [prev[0], ...prev.slice(1), newNotebook]);
+
+      toast.success("Caderno criado com sucesso!", {
+        id: toastId,
+        description: newNotebook.name,
+      });
+
+      setShowNewNotebookModal(false);
+      setNewNotebookName("");
+    } catch (err: any) {
+      console.error("Erro ao criar caderno: ", err);
+      if (err.response && err.response.status === 409) {
+        toast.error("Erro ao criar", {
+          id: toastId,
+          description: "Um caderno com esse nome já existe.",
+        });
+      } else {
+        toast.error("Erro ao criar caderno", {
+          id: toastId,
+          description: "Tente novamente mais tarde.",
+        });
+      }
+    } finally {
+      setIsCreatingNotebook(false);
+    }
+  };
 
   const handleRenameNotebook = () => {
     // TODO: Call PATCH /notebooks/{id} with new name
-    console.log("[v0] Renaming notebook:", notebookToRename, "to:", renameNotebookValue)
-    setShowRenameNotebookModal(false)
-    setNotebookToRename(null)
-    setRenameNotebookValue("")
-  }
+    console.log(
+      "[v0] Renaming notebook:",
+      notebookToRename,
+      "to:",
+      renameNotebookValue
+    );
+    setShowRenameNotebookModal(false);
+    setNotebookToRename(null);
+    setRenameNotebookValue("");
+  };
 
   const handleMoveNote = (targetNotebookId: string) => {
     // TODO: Call PATCH /notebooks/{notebook_id}/notes/{note_id} with new notebook_id
-    console.log("[v0] Moving note:", noteToMove, "to notebook:", targetNotebookId)
-    setShowMoveNoteDialog(false)
-    setNoteToMove(null)
-  }
+    console.log(
+      "[v0] Moving note:",
+      noteToMove,
+      "to notebook:",
+      targetNotebookId
+    );
+    setShowMoveNoteDialog(false);
+    setNoteToMove(null);
+  };
 
   const applyFormatting = (format: string) => {
     // TODO: Implement markdown formatting
-    console.log("Apply formatting:", format)
-  }
+    console.log("Apply formatting:", format);
+  };
 
-  const toggleNoteFavorite = (noteId: number) => {
-    setFavoriteNotes((prev) => (prev.includes(noteId) ? prev.filter((id) => id !== noteId) : [...prev, noteId]))
-  }
+  const toggleNoteFavorite = (noteId: string) => {
+    setFavoriteNotes((prev) =>
+      prev.includes(noteId)
+        ? prev.filter((id) => id !== noteId)
+        : [...prev, noteId]
+    );
+  };
 
   const toggleNotebookFavorite = (notebookId: string) => {
     setFavoriteNotebooks((prev) =>
-      prev.includes(notebookId) ? prev.filter((id) => id !== notebookId) : [...prev, notebookId],
-    )
-  }
+      prev.includes(notebookId)
+        ? prev.filter((id) => id !== notebookId)
+        : [...prev, notebookId]
+    );
+  };
 
   const handleCreateTemplateFromNote = () => {
-    setShowCreateTemplateModal(true)
-  }
+    setShowCreateTemplateModal(true);
+  };
 
   const handleDeleteNote = () => {
     // TODO: Delete note logic
-    setShowDeleteNoteDialog(false)
-    setSelectedNote(null)
-  }
+    setShowDeleteNoteDialog(false);
+    setSelectedNote(null);
+  };
 
   const handleDeleteNotebook = () => {
     // TODO: Delete notebook logic
-    setShowDeleteNotebookDialog(false)
-    setNotebookToDelete(null)
-  }
+    setShowDeleteNotebookDialog(false);
+    setNotebookToDelete(null);
+  };
+  // --- Fim Funções ---
+
+  // --- ADICIONADO ---
+  // Helper para obter o nome do caderno/nota selecionado para os botões mobile
+  const selectedNotebookName =
+    notebooks.find((nb) => nb.id === selectedNotebook)?.name || "Caderno";
+  const selectedNoteTitle =
+    notes.find((n) => n.id === selectedNote)?.title || "Nota";
+  // --- FIM ADICIONADO ---
 
   return (
     <AppShell>
@@ -175,15 +368,260 @@ export default function NotesPage() {
           </Link>
         </div>
 
-        <h1 className="text-2xl sm:text-3xl font-bold mb-4 sm:mb-6">Minhas Notas</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold mb-4 sm:mb-6">
+          Minhas Notas
+        </h1>
+
+        {/* --- INÍCIO DAS MODIFICAÇÕES --- */}
 
         {/* 3 Column Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 flex-1 overflow-hidden">
-          {/* Column 1: Notebooks (Cadernos) */}
-          <div className="lg:col-span-3 bg-card rounded-lg border p-4 overflow-y-auto max-h-[300px] lg:max-h-none">
+          {/* Mobile Navigation Sheets (Substitui os Dropdowns) */}
+          <div className="lg:hidden col-span-1 grid grid-cols-2 gap-4">
+            {/* Botão para abrir Sheet de Cadernos */}
+            <Sheet open={showNotebookSheet} onOpenChange={setShowNotebookSheet}>
+              <SheetTrigger asChild>
+                <Button variant="outline" className="justify-start truncate">
+                  <BookOpen className="h-4 w-4 mr-2 shrink-0" />
+                  <span className="truncate">{selectedNotebookName}</span>
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="left" className="w-[300px] sm:w-[350px]">
+                <SheetHeader>
+                  <SheetTitle>Cadernos</SheetTitle>
+                </SheetHeader>
+                {/* Reutiliza a Coluna 1 aqui dentro */}
+                <div className="overflow-y-auto p-1 mt-4">
+                  <div className="space-y-4">
+                    <div>
+                      <div className="space-y-1">
+                        {notebooks.map((notebook) => (
+                          <div
+                            key={notebook.id}
+                            className="flex items-center gap-2"
+                          >
+                            <button
+                              onClick={() =>
+                                toggleNotebookFavorite(notebook.id)
+                              }
+                              className="shrink-0 text-muted-foreground hover:text-[#F6A800] transition-colors"
+                            >
+                              <Star
+                                className={`h-4 w-4 ${
+                                  favoriteNotebooks.includes(notebook.id)
+                                    ? "fill-[#F6A800] text-[#F6A800]"
+                                    : ""
+                                }`}
+                              />
+                            </button>
+                            <button
+                              onClick={() => {
+                                setSelectedNotebook(notebook.id);
+                                setShowNotebookSheet(false); // Fecha o sheet
+                              }}
+                              className={`flex-1 text-left px-3 py-2 rounded-md text-xs sm:text-sm transition-colors ${
+                                selectedNotebook === notebook.id
+                                  ? "bg-primary text-primary-foreground"
+                                  : "hover:bg-accent"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="truncate">
+                                  {notebook.name}
+                                </span>
+                              </div>
+                            </button>
+                            {notebook.id !== "all" && (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <button className="shrink-0 text-muted-foreground hover:text-foreground transition-colors">
+                                    <MoreVertical className="h-4 w-4" />
+                                  </button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent>
+                                  <DropdownMenuItem
+                                    onClick={() => {
+                                      setNotebookToRename(notebook.id);
+                                      setRenameNotebookValue(notebook.name);
+                                      setShowRenameNotebookModal(true);
+                                    }}
+                                  >
+                                    <Edit2 className="h-4 w-4 mr-2" />
+                                    Renomear
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => {
+                                      setNotebookToDelete(notebook.id);
+                                      setShowDeleteNotebookDialog(true);
+                                    }}
+                                    className="text-destructive focus:text-destructive"
+                                  >
+                                    <Trash2 className="h-4 w-4 mr-2" />
+                                    Apagar Caderno
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full bg-transparent text-xs sm:text-sm"
+                      onClick={() => setShowNewNotebookModal(true)}
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Novo Caderno
+                    </Button>
+                    <div className="pt-4 border-t">
+                      <h2 className="font-semibold mb-3 text-sm sm:text-base">
+                        Templates
+                      </h2>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="w-full justify-start text-xs sm:text-sm"
+                        onClick={() => (window.location.href = "/templates")}
+                      >
+                        Gerenciar Templates
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </SheetContent>
+            </Sheet>
+
+            {/* Botão para abrir Sheet de Notas */}
+            <Sheet open={showNoteSheet} onOpenChange={setShowNoteSheet}>
+              <SheetTrigger asChild>
+                <Button variant="outline" className="justify-start truncate">
+                  <FileText className="h-4 w-4 mr-2 shrink-0" />
+                  <span className="truncate">{selectedNoteTitle}</span>
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="left" className="w-[300px] sm:w-[350px]">
+                <SheetHeader>
+                  <SheetTitle>Notas</SheetTitle>
+                </SheetHeader>
+                {/* Reutiliza a Coluna 2 aqui dentro */}
+                <div className="flex-1 overflow-y-auto p-2 mt-4">
+                  <div className="space-y-2">
+                    {notes.map((note, noteIndex) => (
+                      <div
+                        key={note.id}
+                        className={`p-2 sm:p-3 rounded-lg transition-colors ${
+                          selectedNote === note.id
+                            ? "bg-primary/10 border-primary border"
+                            : "hover:bg-accent border border-transparent"
+                        }`}
+                      >
+                        <div className="flex items-start gap-2">
+                          <button
+                            onClick={() => toggleNoteFavorite(note.id)}
+                            className="shrink-0 mt-1 text-muted-foreground hover:text-[#F6A800] transition-colors"
+                          >
+                            <Star
+                              className={`h-4 w-4 ${
+                                favoriteNotes.includes(note.id)
+                                  ? "fill-[#F6A800] text-[#F6A800]"
+                                  : ""
+                              }`}
+                            />
+                          </button>
+                          <div
+                            onClick={() => {
+                              setSelectedNote(note.id);
+                              setShowNoteSheet(false); // Fecha o sheet
+                            }}
+                            className="flex-1 cursor-pointer"
+                          >
+                            <div className="flex items-start justify-between mb-2">
+                              <h3 className="font-semibold text-xs sm:text-sm">
+                                {note.title}
+                              </h3>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <button
+                                    className="text-muted-foreground hover:text-foreground"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <MoreVertical className="h-4 w-4" />
+                                  </button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent>
+                                  <DropdownMenuSub>
+                                    <DropdownMenuSubTrigger>
+                                      <FolderInput className="h-4 w-4 mr-2" />
+                                      Mover para...
+                                    </DropdownMenuSubTrigger>
+                                    <DropdownMenuSubContent>
+                                      {notebooks
+                                        .filter(
+                                          (nb) =>
+                                            nb.id !== "all" &&
+                                            nb.id !== selectedNotebook
+                                        )
+                                        .map((notebook) => (
+                                          <DropdownMenuItem
+                                            key={notebook.id}
+                                            onClick={() => {
+                                              setNoteToMove(note.id);
+                                              handleMoveNote(notebook.id);
+                                            }}
+                                          >
+                                            {notebook.name}
+                                          </DropdownMenuItem>
+                                        ))}
+                                    </DropdownMenuSubContent>
+                                  </DropdownMenuSub>
+                                  <DropdownMenuItem
+                                    onClick={() =>
+                                      setShowDeleteNoteDialog(true)
+                                    }
+                                    className="text-destructive focus:text-destructive"
+                                  >
+                                    <Trash2 className="h-4 w-4 mr-2" />
+                                    Apagar Nota
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                            <p className="text-xs text-muted-foreground mb-2 line-clamp-2">
+                              {note.content}
+                            </p>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {note.tags &&
+                                note.tags.map((tag, tagIndex) => (
+                                  <Badge
+                                    key={tag.id}
+                                    className={`text-xs ${getTagColor(
+                                      tagIndex
+                                    )}`}
+                                  >
+                                    {tag.name}
+                                  </Badge>
+                                ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </SheetContent>
+            </Sheet>
+          </div>
+
+          {/* Column 1: Notebooks (Cadernos) - Hidden on mobile */}
+          <div className="hidden lg:flex flex-col lg:col-span-3 bg-card rounded-lg border p-4 overflow-y-auto">
+            {/* O conteúdo original da Coluna 1 foi movido para dentro do Sheet (acima) e copiado aqui */}
             <div className="space-y-4">
               <div>
-                <h2 className="font-semibold mb-3 text-sm sm:text-base">Cadernos</h2>
+                <h2 className="font-semibold mb-3 text-sm sm:text-base">
+                  Cadernos
+                </h2>
                 <div className="space-y-1">
                   {notebooks.map((notebook) => (
                     <div key={notebook.id} className="flex items-center gap-2">
@@ -193,19 +631,22 @@ export default function NotesPage() {
                       >
                         <Star
                           className={`h-4 w-4 ${
-                            favoriteNotebooks.includes(notebook.id) ? "fill-[#F6A800] text-[#F6A800]" : ""
+                            favoriteNotebooks.includes(notebook.id)
+                              ? "fill-[#F6A800] text-[#F6A800]"
+                              : ""
                           }`}
                         />
                       </button>
                       <button
                         onClick={() => setSelectedNotebook(notebook.id)}
                         className={`flex-1 text-left px-3 py-2 rounded-md text-xs sm:text-sm transition-colors ${
-                          selectedNotebook === notebook.id ? "bg-primary text-primary-foreground" : "hover:bg-accent"
+                          selectedNotebook === notebook.id
+                            ? "bg-primary text-primary-foreground"
+                            : "hover:bg-accent"
                         }`}
                       >
                         <div className="flex items-center justify-between">
                           <span className="truncate">{notebook.name}</span>
-                          <span className="text-xs ml-2">{notebook.count}</span>
                         </div>
                       </button>
                       {notebook.id !== "all" && (
@@ -218,9 +659,9 @@ export default function NotesPage() {
                           <DropdownMenuContent>
                             <DropdownMenuItem
                               onClick={() => {
-                                setNotebookToRename(notebook.id)
-                                setRenameNotebookValue(notebook.name)
-                                setShowRenameNotebookModal(true)
+                                setNotebookToRename(notebook.id);
+                                setRenameNotebookValue(notebook.name);
+                                setShowRenameNotebookModal(true);
                               }}
                             >
                               <Edit2 className="h-4 w-4 mr-2" />
@@ -228,8 +669,8 @@ export default function NotesPage() {
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => {
-                                setNotebookToDelete(notebook.id)
-                                setShowDeleteNotebookDialog(true)
+                                setNotebookToDelete(notebook.id);
+                                setShowDeleteNotebookDialog(true);
                               }}
                               className="text-destructive focus:text-destructive"
                             >
@@ -255,7 +696,9 @@ export default function NotesPage() {
               </Button>
 
               <div className="pt-4 border-t">
-                <h2 className="font-semibold mb-3 text-sm sm:text-base">Templates</h2>
+                <h2 className="font-semibold mb-3 text-sm sm:text-base">
+                  Templates
+                </h2>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -268,8 +711,9 @@ export default function NotesPage() {
             </div>
           </div>
 
-          {/* Column 2: Notes List */}
-          <div className="lg:col-span-4 bg-card rounded-lg border overflow-hidden flex flex-col max-h-[400px] lg:max-h-none">
+          {/* Column 2: Notes List - Hidden on mobile */}
+          <div className="hidden lg:flex flex-col lg:col-span-4 bg-card rounded-lg border overflow-hidden">
+            {/* O conteúdo original da Coluna 2 foi movido para dentro do Sheet (acima) e copiado aqui */}
             <div className="flex-1 overflow-y-auto p-2">
               <div className="space-y-2">
                 {notes.map((note, noteIndex) => (
@@ -288,13 +732,20 @@ export default function NotesPage() {
                       >
                         <Star
                           className={`h-4 w-4 ${
-                            favoriteNotes.includes(note.id) ? "fill-[#F6A800] text-[#F6A800]" : ""
+                            favoriteNotes.includes(note.id)
+                              ? "fill-[#F6A800] text-[#F6A800]"
+                              : ""
                           }`}
                         />
                       </button>
-                      <div onClick={() => setSelectedNote(note.id)} className="flex-1 cursor-pointer">
+                      <div
+                        onClick={() => setSelectedNote(note.id)}
+                        className="flex-1 cursor-pointer"
+                      >
                         <div className="flex items-start justify-between mb-2">
-                          <h3 className="font-semibold text-xs sm:text-sm">{note.title}</h3>
+                          <h3 className="font-semibold text-xs sm:text-sm">
+                            {note.title}
+                          </h3>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <button
@@ -312,13 +763,17 @@ export default function NotesPage() {
                                 </DropdownMenuSubTrigger>
                                 <DropdownMenuSubContent>
                                   {notebooks
-                                    .filter((nb) => nb.id !== "all" && nb.id !== selectedNotebook)
+                                    .filter(
+                                      (nb) =>
+                                        nb.id !== "all" &&
+                                        nb.id !== selectedNotebook
+                                    )
                                     .map((notebook) => (
                                       <DropdownMenuItem
                                         key={notebook.id}
                                         onClick={() => {
-                                          setNoteToMove(note.id)
-                                          handleMoveNote(notebook.id)
+                                          setNoteToMove(note.id);
+                                          handleMoveNote(notebook.id);
                                         }}
                                       >
                                         {notebook.name}
@@ -336,14 +791,19 @@ export default function NotesPage() {
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </div>
-                        <p className="text-xs text-muted-foreground mb-2 line-clamp-2">{note.content}</p>
+                        <p className="text-xs text-muted-foreground mb-2 line-clamp-2">
+                          {note.content}
+                        </p>
                         <div className="flex items-center gap-2 flex-wrap">
-                          {note.tags.map((tag, tagIndex) => (
-                            <Badge key={tag} className={`text-xs ${getTagColor(tagIndex)}`}>
-                              {tag}
-                            </Badge>
-                          ))}
-                          <span className="text-xs text-muted-foreground ml-auto">{note.time}</span>
+                          {note.tags &&
+                            note.tags.map((tag, tagIndex) => (
+                              <Badge
+                                key={tag.id}
+                                className={`text-xs ${getTagColor(tagIndex)}`}
+                              >
+                                {tag.id}
+                              </Badge>
+                            ))}
                         </div>
                       </div>
                     </div>
@@ -353,8 +813,10 @@ export default function NotesPage() {
             </div>
           </div>
 
-          {/* Column 3: Note Editor */}
-          <div className="lg:col-span-5 bg-card rounded-lg border overflow-hidden flex flex-col">
+          {/* Column 3: Note Editor - Spans full width on mobile */}
+          <div className="col-span-1 lg:col-span-5 bg-card rounded-lg border overflow-hidden flex flex-col">
+            {/* --- FIM DAS MODIFICAÇÕES --- */}
+
             <div className="p-3 sm:p-4 border-b space-y-3 sm:space-y-4">
               <Input
                 value={noteTitle}
@@ -366,11 +828,11 @@ export default function NotesPage() {
               <div className="flex items-center gap-2 flex-wrap">
                 {noteTags.map((tag, index) => (
                   <Badge
-                    key={tag}
+                    key={tag.id}
                     className={`cursor-pointer text-xs ${getTagColor(index)}`}
-                    onClick={() => handleRemoveTag(tag)}
+                    onClick={() => handleRemoveTag(tag.id)}
                   >
-                    {tag}
+                    {tag.name}
                   </Badge>
                 ))}
                 <div className="flex items-center gap-2">
@@ -389,44 +851,88 @@ export default function NotesPage() {
 
               {/* Formatting Toolbar */}
               <div className="flex items-center gap-1 pt-2 border-t overflow-x-auto">
-                <Button variant="ghost" size="sm" onClick={() => applyFormatting("h1")} className="h-8 px-2 text-xs">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => applyFormatting("h1")}
+                  className="h-8 px-2 text-xs"
+                >
                   H1
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => applyFormatting("h2")} className="h-8 px-2 text-xs">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => applyFormatting("h2")}
+                  className="h-8 px-2 text-xs"
+                >
                   H2
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => applyFormatting("h3")} className="h-8 px-2 text-xs">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => applyFormatting("h3")}
+                  className="h-8 px-2 text-xs"
+                >
                   H3
                 </Button>
                 <div className="w-px h-6 bg-border mx-1" />
-                <Button variant="ghost" size="sm" onClick={() => applyFormatting("bold")} className="h-8 px-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => applyFormatting("bold")}
+                  className="h-8 px-2"
+                >
                   <Bold className="h-4 w-4" />
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => applyFormatting("italic")} className="h-8 px-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => applyFormatting("italic")}
+                  className="h-8 px-2"
+                >
                   <Italic className="h-4 w-4" />
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => applyFormatting("underline")} className="h-8 px-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => applyFormatting("underline")}
+                  className="h-8 px-2"
+                >
                   <Underline className="h-4 w-4" />
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => applyFormatting("code")} className="h-8 px-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => applyFormatting("code")}
+                  className="h-8 px-2"
+                >
                   <Code className="h-4 w-4" />
                 </Button>
               </div>
             </div>
 
             <div className="flex-1 p-3 sm:p-4 overflow-y-auto min-h-0">
-              <Textarea
-                value={noteContent}
-                onChange={(e) => setNoteContent(e.target.value)}
-                className="h-full min-h-[300px] sm:min-h-[400px] border-0 focus-visible:ring-0 resize-none font-mono text-xs sm:text-sm"
-                placeholder="Comece a escrever aqui..."
-              />
+              {isLoadingNoteContent ? (
+                <div className="flex items-center justify-center h-full">
+                  <Spinner className="h-6 w-6" />
+                </div>
+              ) : (
+                <Textarea
+                  value={noteContent}
+                  onChange={(e) => setNoteContent(e.target.value)}
+                  className="h-full min-h-[300px] sm:min-h-full border-0 focus-visible:ring-0 resize-none font-mono text-xs sm:text-sm"
+                  placeholder="Comece a escrever aqui..."
+                />
+              )}
             </div>
 
             <div className="p-3 sm:p-4 border-t flex flex-col sm:flex-row gap-2">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" className="w-full sm:w-auto text-xs sm:text-sm bg-transparent">
+                  <Button
+                    variant="outline"
+                    className="w-full sm:w-auto text-xs sm:text-sm bg-transparent"
+                  >
                     <MoreVertical className="h-4 w-4 mr-2" />
                     Mais Opções
                   </Button>
@@ -442,18 +948,25 @@ export default function NotesPage() {
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-              <Button className="w-full sm:w-auto sm:ml-auto text-xs sm:text-sm">Salvar</Button>
+              <Button className="w-full sm:w-auto sm:ml-auto text-xs sm:text-sm">
+                Salvar
+              </Button>
             </div>
           </div>
         </div>
       </div>
 
-      {/* New Notebook Modal */}
-      <Dialog open={showNewNotebookModal} onOpenChange={setShowNewNotebookModal}>
+      {/* --- Modais (sem alteração) --- */}
+      <Dialog
+        open={showNewNotebookModal}
+        onOpenChange={setShowNewNotebookModal}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Criar Novo Caderno</DialogTitle>
-            <DialogDescription>Digite um nome para o novo caderno.</DialogDescription>
+            <DialogDescription>
+              Digite um nome para o novo caderno.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
@@ -467,20 +980,31 @@ export default function NotesPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowNewNotebookModal(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setShowNewNotebookModal(false)}
+              disabled = {isCreatingNotebook}
+            >
               Cancelar
             </Button>
-            <Button onClick={handleCreateNotebook}>Criar</Button>
+            <Button onClick={handleCreateNotebook} disabled={isCreatingNotebook}>
+              {isCreatingNotebook && <Spinner className="mr-2" />}
+              {isCreatingNotebook ? "Criando..." : "Criar"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Rename Notebook Modal */}
-      <Dialog open={showRenameNotebookModal} onOpenChange={setShowRenameNotebookModal}>
+      <Dialog
+        open={showRenameNotebookModal}
+        onOpenChange={setShowRenameNotebookModal}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Renomear Caderno</DialogTitle>
-            <DialogDescription>Digite o novo nome para o caderno.</DialogDescription>
+            <DialogDescription>
+              Digite o novo nome para o caderno.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
@@ -494,7 +1018,10 @@ export default function NotesPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowRenameNotebookModal(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setShowRenameNotebookModal(false)}
+            >
               Cancelar
             </Button>
             <Button onClick={handleRenameNotebook}>Renomear</Button>
@@ -502,30 +1029,43 @@ export default function NotesPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Template Selection Modal */}
-      <TemplateSelectionModal open={showTemplateModal} onOpenChange={setShowTemplateModal} />
+      <TemplateSelectionModal
+        open={showTemplateModal}
+        onOpenChange={setShowTemplateModal}
+      />
 
-      {/* Create Template from Note Modal */}
-      <Dialog open={showCreateTemplateModal} onOpenChange={setShowCreateTemplateModal}>
+      <Dialog
+        open={showCreateTemplateModal}
+        onOpenChange={setShowCreateTemplateModal}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Criar Template desta Nota</DialogTitle>
-            <DialogDescription>Esta nota será salva como um template que você pode reutilizar.</DialogDescription>
+            <DialogDescription>
+              Esta nota será salva como um template que você pode reutilizar.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label htmlFor="template-title">Título do Template:</Label>
-              <Input id="template-title" placeholder="Ex.: Reunião Semanal" defaultValue={noteTitle} />
+              <Input
+                id="template-title"
+                placeholder="Ex.: Reunião Semanal"
+                defaultValue={noteTitle}
+              />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCreateTemplateModal(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setShowCreateTemplateModal(false)}
+            >
               Cancelar
             </Button>
             <Button
               onClick={() => {
                 // TODO: Save template logic
-                setShowCreateTemplateModal(false)
+                setShowCreateTemplateModal(false);
               }}
             >
               Criar Template
@@ -534,40 +1074,54 @@ export default function NotesPage() {
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={showDeleteNoteDialog} onOpenChange={setShowDeleteNoteDialog}>
+      <AlertDialog
+        open={showDeleteNoteDialog}
+        onOpenChange={setShowDeleteNoteDialog}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Apagar Nota</AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja apagar esta nota? Esta ação não pode ser desfeita.
+              Tem certeza que deseja apagar esta nota? Esta ação não pode ser
+              desfeita.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteNote} className="bg-destructive hover:bg-destructive/90">
+            <AlertDialogAction
+              onClick={handleDeleteNote}
+              className="bg-destructive hover:bg-destructive/90"
+            >
               Apagar
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={showDeleteNotebookDialog} onOpenChange={setShowDeleteNotebookDialog}>
+      <AlertDialog
+        open={showDeleteNotebookDialog}
+        onOpenChange={setShowDeleteNotebookDialog}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Apagar Caderno</AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja apagar este caderno? Todas as notas dentro dele serão movidas para "Outras Notas".
-              Esta ação não pode ser desfeita.
+              Tem certeza que deseja apagar este caderno? Todas as notas dentro
+              dele serão movidas para "Outras Notas". Esta ação não pode ser
+              desfeita.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteNotebook} className="bg-destructive hover:bg-destructive/90">
+            <AlertDialogAction
+              onClick={handleDeleteNotebook}
+              className="bg-destructive hover:bg-destructive/90"
+            >
               Apagar
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </AppShell>
-  )
+  );
 }
