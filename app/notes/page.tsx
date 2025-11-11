@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -101,6 +101,13 @@ interface Note {
 
 export default function NotesPage() {
   const router = useRouter();
+  
+  // Lê os searchParams UMA VEZ no carregamento
+  const searchParams = useSearchParams();
+  const newNoteParam = searchParams.get("new");
+  const noteIdParam = searchParams.get("note");
+  const notebookIdParam = searchParams.get("notebook");
+
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
 
@@ -123,6 +130,8 @@ export default function NotesPage() {
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [newNotebookName, setNewNotebookName] = useState("");
   const [showCreateTemplateModal, setShowCreateTemplateModal] = useState(false);
+  const [newTemplateName, setNewTemplateName] = useState("");
+  const [isCreatingTemplate, setIsCreatingTemplate] = useState(false);
   const [showDeleteNoteDialog, setShowDeleteNoteDialog] = useState(false);
   const [showDeleteNotebookDialog, setShowDeleteNotebookDialog] =
     useState(false);
@@ -130,6 +139,8 @@ export default function NotesPage() {
   const [showRenameNotebookModal, setShowRenameNotebookModal] = useState(false);
   const [notebookToRename, setNotebookToRename] = useState<string | null>(null);
   const [renameNotebookValue, setRenameNotebookValue] = useState("");
+  const [notebookIdForTemplate, setNotebookIdForTemplate] =
+    useState<string>("");
   const [showMoveNoteDialog, setShowMoveNoteDialog] = useState(false);
   const [noteToMove, setNoteToMove] = useState<string | null>(null);
   const [showNotebookSheet, setShowNotebookSheet] = useState(false);
@@ -163,6 +174,7 @@ export default function NotesPage() {
 
   const getTagColor = (index: number) => tagColors[index % tagColors.length];
 
+  // Efeito para buscar Cadernos e Tags (apenas uma vez)
   useEffect(() => {
     const fetchNotebooks = async () => {
       setIsLoadingNotebooks(true);
@@ -181,8 +193,23 @@ export default function NotesPage() {
           updated_at: null,
         };
 
-        setNotebooks([allNotesNotebook, ...response.data]);
-        setSelectedNotebook("all");
+        const notebooksData = [allNotesNotebook, ...response.data];
+        setNotebooks(notebooksData);
+
+        // --- LÓGICA DE SELEÇÃO INICIAL ---
+        // Decide qual caderno selecionar com base nos parâmetros da URL
+        if (newNoteParam === "true") {
+          const qcNotebook = notebooksData.find(
+            (nb) => nb.name === "Capturas Rápidas"
+          );
+          setSelectedNotebook(qcNotebook?.id || "all");
+        } else if (notebookIdParam) {
+          setSelectedNotebook(notebookIdParam);
+        } else {
+          setSelectedNotebook("all");
+        }
+        // --- FIM DA LÓGICA DE SELEÇÃO ---
+
       } catch (err: any) {
         console.error("Erro ao buscar cadernos: ", err);
         if (err.response && err.response.status === 401) {
@@ -204,25 +231,20 @@ export default function NotesPage() {
 
     fetchNotebooks();
     fetchTags();
-  }, [router]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router]); // Executa apenas uma vez
 
+  // Efeito para buscar notas quando o caderno muda
   useEffect(() => {
+    if (!selectedNotebook) return; // Aguarda o primeiro efeito definir
+
     const fetchNotes = async () => {
-      setSelectedNote(null);
-      setNoteTitle("");
-      setNoteContent("");
-      setNoteTags([]);
-
-      if (!selectedNotebook) {
-        setNotes([]);
-        return;
-      }
-
       setIsLoadingNotes(true);
+      setNotes([]); 
+      setSelectedNote(null); 
 
       try {
         let response;
-
         if (selectedNotebook === "all") {
           response = await api.get<Note[]>("/notes/");
         } else {
@@ -231,11 +253,29 @@ export default function NotesPage() {
           );
         }
 
-        setNotes(response.data);
+        const newNotes = response.data;
+        setNotes(newNotes);
 
-        if (response.data.length > 0) {
-          setSelectedNote(response.data[0].id);
+        // --- LÓGICA DE SELEÇÃO PÓS-FETCH ---
+        // Verifica os parâmetros da URL lidos no carregamento
+        if (newNoteParam === "true" && notebookIdParam === selectedNotebook) {
+          // É o fluxo "Nota do Zero"
+          setSelectedNote(null);
+          router.replace("/notes", { scroll: false }); 
+        } else if (noteIdParam && notebookIdParam === selectedNotebook) {
+          // É o fluxo "Template"
+          if (newNotes.some((n) => n.id === noteIdParam)) {
+            setSelectedNote(noteIdParam); 
+          }
+          router.replace("/notes", { scroll: false }); 
+        } else if (newNotes.length > 0) {
+          // Comportamento padrão: seleciona a primeira nota
+          setSelectedNote(newNotes[0].id);
+        } else {
+          // Caderno vazio, não seleciona nada
+          setSelectedNote(null);
         }
+        // --- FIM DA LÓGICA ---
       } catch (err: any) {
         console.error("Erro ao buscar notas: ", err);
         setNotes([]);
@@ -248,13 +288,17 @@ export default function NotesPage() {
     };
 
     fetchNotes();
-  }, [selectedNotebook, router]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedNotebook, router]); // Depende apenas do caderno selecionado
 
+  // Efeito para carregar o conteúdo da nota selecionada
   useEffect(() => {
     if (!selectedNote) {
+      // Limpa o editor se nenhuma nota estiver selecionada (ex: "Nova Nota")
       setNoteTitle("");
       setNoteContent("");
       setNoteTags([]);
+      setIsLoadingNoteContent(false);
       return;
     }
 
@@ -265,11 +309,11 @@ export default function NotesPage() {
       setNoteTitle(note.title);
       setNoteContent(note.content || "");
       setNoteTags(note.tags || []);
-
       setIsLoadingNoteContent(false);
     }
-  }, [selectedNote, notes]);
+  }, [selectedNote, notes]); // CORREÇÃO: Depende apenas de selectedNote e notes
 
+  // Efeito para sugestão de tags
   useEffect(() => {
     if (newTag.trim().length > 0) {
       const noteTagIds = new Set(noteTags.map((t) => t.id));
@@ -286,7 +330,10 @@ export default function NotesPage() {
       setTagSuggestions([]);
       setShowTagSuggestions(false);
     }
-  }, [newTag, allUserTags, noteTags]);
+  }, [newTag, allUserTags, noteTags]); // CORREÇÃO: Dependências corretas
+
+  
+  // --- INÍCIO DAS FUNÇÕES HANDLER ---
 
   const handleAddTag = async () => {
     if (!newTag.trim() || !selectedNote) return;
@@ -403,7 +450,7 @@ export default function NotesPage() {
 
       const newNotebook = response.data;
 
-      setNotebooks((prev) => [prev[0], ...prev.slice(1), newNotebook]);
+      setNotebooks((prev) => [...prev, newNotebook]); 
 
       toast.success("Caderno criado com sucesso!", {
         id: toastId,
@@ -473,31 +520,35 @@ export default function NotesPage() {
   };
 
   const handleMoveNote = async (targetNotebookId: string) => {
-    const noteToMoveObj = notes.find((n) => n.id === noteToMove);
-    if (!noteToMoveObj || isMovingNote) return;
+    const noteIdToMove = noteToMove; // Captura o ID da nota a ser movida
+    if (!noteIdToMove) return;
 
+    const noteToMoveObj = notes.find((n) => n.id === noteIdToMove);
+    if (!noteToMoveObj || isMovingNote) return;
+  
     setIsMovingNote(true);
     const toastId = toast.loading("Movendo nota...");
-
+  
     try {
       await api.patch(
         `/notebooks/${noteToMoveObj.notebook_id}/notes/${noteToMoveObj.id}`,
         { notebook_id: targetNotebookId }
       );
-
-      setNotes((prev) => prev.filter((n) => n.id !== noteToMove));
-
-      if (selectedNote === noteToMove) {
+  
+      // Remove a nota da lista de notas atual
+      setNotes((prev) => prev.filter((n) => n.id !== noteIdToMove));
+  
+      if (selectedNote === noteIdToMove) {
         setSelectedNote(null);
       }
-
+  
       toast.success("Nota movida com sucesso!", { id: toastId });
     } catch (err: any) {
       console.error("Erro ao mover nota:", err);
       toast.error("Erro ao mover nota. Tente novamente.", { id: toastId });
     } finally {
       setIsMovingNote(false);
-      setNoteToMove(null);
+      setNoteToMove(null); 
     }
   };
 
@@ -572,11 +623,12 @@ export default function NotesPage() {
   };
 
   const handleAddNewNote = () => {
-    setSelectedNote(null);
+    setSelectedNote(null); 
     setNoteTitle("");
     setNoteContent("");
     setNoteTags([]);
     setShowNoteSheet(false);
+    router.replace("/notes", { scroll: false }); 
   };
 
   const handleSaveNote = async () => {
@@ -585,6 +637,7 @@ export default function NotesPage() {
 
     try {
       if (selectedNote) {
+        // --- ATUALIZANDO NOTA EXISTENTE ---
         const noteToSave = notes.find((n) => n.id === selectedNote);
         if (!noteToSave) {
           throw new Error("Nota selecionada não encontrada para atualização.");
@@ -593,7 +646,7 @@ export default function NotesPage() {
         const response = await api.patch<Note>(
           `/notebooks/${noteToSave.notebook_id}/notes/${noteToSave.id}`,
           {
-            title: noteTitle,
+            title: noteTitle || "Nota sem título", 
             content: noteContent,
           }
         );
@@ -604,6 +657,7 @@ export default function NotesPage() {
 
         toast.success("Nota salva com sucesso!", { id: toastId });
       } else {
+        // --- CRIANDO NOTA NOVA ---
         if (!selectedNotebook) {
           toast.error("Erro: Nenhum caderno selecionado.", { id: toastId });
           return;
@@ -615,7 +669,6 @@ export default function NotesPage() {
           const quickCaptureNotebook = notebooks.find(
             (nb) => nb.name === "Capturas Rápidas"
           );
-
           if (!quickCaptureNotebook) {
             toast.error("Caderno 'Capturas Rápidas' não encontrado.", {
               id: toastId,
@@ -634,8 +687,22 @@ export default function NotesPage() {
         );
 
         const newNote = response.data;
-
+        
+        // Adiciona a nova nota à lista
         setNotes((prev) => [newNote, ...prev]);
+        
+        // Se o caderno selecionado for o "all" ou o caderno de destino,
+        // a nota já está na lista. Apenas seleciona.
+        if (selectedNotebook === "all" || selectedNotebook === targetNotebookId) {
+          setNotes((prev) => [newNote, ...prev.filter(n => n.id !== newNote.id)]);
+        } else {
+          // Se estava em outro caderno (ex: "Todas as Notas") e criou
+          // em "Capturas Rápidas", não precisa mudar a lista de "Todas as Notas"
+          // Apenas seleciona o caderno "Capturas Rápidas"
+          setSelectedNotebook(targetNotebookId);
+          // O useEffect[selectedNotebook] vai buscar as notas e selecionar a nova
+        }
+        
         setSelectedNote(newNote.id);
         setNoteTags(newNote.tags || []);
 
@@ -666,7 +733,6 @@ export default function NotesPage() {
     } catch (err) {
       console.error("Erro ao favoritar nota:", err);
       toast.error("Erro ao atualizar favorito.");
-
       setFavoriteNotes((prev) =>
         newIsFavorite ? prev.filter((id) => id !== noteId) : [...prev, noteId]
       );
@@ -699,7 +765,6 @@ export default function NotesPage() {
     } catch (err) {
       console.error("Erro ao favoritar caderno:", err);
       toast.error("Erro ao atualizar favorito.");
-
       setFavoriteNotebooks((prev) =>
         newIsFavorite
           ? prev.filter((id) => id !== notebookId)
@@ -715,7 +780,52 @@ export default function NotesPage() {
   };
 
   const handleCreateTemplateFromNote = () => {
+    const note = notes.find((n) => n.id === selectedNote);
+    setNewTemplateName(note?.title || "Novo Template");
     setShowCreateTemplateModal(true);
+  };
+
+  const handleConfirmCreateTemplate = async () => {
+    const noteToTemplate = notes.find((n) => n.id === selectedNote);
+
+    if (!noteToTemplate) {
+      toast.error("Erro: Nenhuma nota selecionada.");
+      return;
+    }
+
+    if (!newTemplateName.trim()) {
+      toast.error("O nome do template não pode ficar vazio.");
+      return;
+    }
+
+    setIsCreatingTemplate(true);
+    const toastId = toast.loading("Criando template...");
+
+    try {
+      await api.post(
+        `/notebooks/${noteToTemplate.notebook_id}/notes/${noteToTemplate.id}/templates`,
+        {
+          name: newTemplateName.trim(),
+        }
+      );
+
+      toast.success("Template criado com sucesso!", { id: toastId });
+      setShowCreateTemplateModal(false);
+      setNewTemplateName("");
+    } catch (err: any) {
+      console.error("Erro ao criar template:", err);
+      if (err.response && err.response.status === 409) {
+        toast.error("Erro: Um template com esse nome já existe.", {
+          id: toastId,
+        });
+      } else {
+        toast.error("Erro ao criar template. Tente novamente.", {
+          id: toastId,
+        });
+      }
+    } finally {
+      setIsCreatingTemplate(false);
+    }
   };
 
   const handleDeleteNote = async () => {
@@ -730,9 +840,14 @@ export default function NotesPage() {
         `/notebooks/${noteToDelete.notebook_id}/notes/${noteToDelete.id}`
       );
 
-      setNotes((prev) => prev.filter((n) => n.id !== selectedNote));
+      const newNotesList = notes.filter((n) => n.id !== selectedNote);
+      setNotes(newNotesList);
 
-      setSelectedNote(null);
+      if (newNotesList.length > 0) {
+        setSelectedNote(newNotesList[0].id);
+      } else {
+        setSelectedNote(null);
+      }
 
       toast.success("Nota apagada com sucesso!", { id: toastId });
       setShowDeleteNoteDialog(false);
@@ -764,20 +879,26 @@ export default function NotesPage() {
       setNotebookToDelete(null);
     } catch (err: any) {
       console.error("Erro ao apagar caderno:", err);
-      toast.error("Erro ao apagar caderno. Tente novamente.", { id: toastId });
+      if (err.response && err.response.status === 403) {
+        toast.error("Erro: Este caderno não pode ser excluído.", {
+          id: toastId,
+        });
+      } else {
+        toast.error("Erro ao apagar caderno. Tente novamente.", {
+          id: toastId,
+        });
+      }
     } finally {
       setIsDeletingNotebook(false);
     }
   };
   // --- Fim Funções ---
 
-  // --- ADICIONADO ---
-  // Helper para obter o nome do caderno/nota selecionado para os botões mobile
   const selectedNotebookName =
     notebooks.find((nb) => nb.id === selectedNotebook)?.name || "Caderno";
   const selectedNoteTitle =
-    notes.find((n) => n.id === selectedNote)?.title || "Nota";
-  // --- FIM ADICIONADO ---
+    notes.find((n) => n.id === selectedNote)?.title ||
+    (selectedNote === null ? "Nova Nota" : "Nota");
 
   return (
     <AppShell>
@@ -796,11 +917,8 @@ export default function NotesPage() {
           Minhas Notas
         </h1>
 
-        {/* --- INÍCIO DAS MODIFICAÇÕES --- */}
-
-        {/* 3 Column Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 flex-1 overflow-hidden">
-          {/* Mobile Navigation Sheets (Substitui os Dropdowns) */}
+          {/* Mobile Navigation Sheets */}
           <div className="lg:hidden col-span-1 grid grid-cols-2 gap-4">
             {/* Botão para abrir Sheet de Cadernos */}
             <Sheet open={showNotebookSheet} onOpenChange={setShowNotebookSheet}>
@@ -814,7 +932,6 @@ export default function NotesPage() {
                 <SheetHeader>
                   <SheetTitle>Cadernos</SheetTitle>
                 </SheetHeader>
-                {/* Reutiliza a Coluna 1 aqui dentro */}
                 <div className="overflow-y-auto p-1 mt-4">
                   <div className="space-y-4">
                     <div>
@@ -828,10 +945,15 @@ export default function NotesPage() {
                               onClick={() =>
                                 toggleNotebookFavorite(notebook.id)
                               }
-                              disabled={togglingFavoriteNotebooks.has(
-                                notebook.id
-                              )}
-                              className="shrink-0 text-muted-foreground hover:text-[#F6A800] transition-colors"
+                              disabled={
+                                notebook.id === "all" ||
+                                togglingFavoriteNotebooks.has(notebook.id)
+                              }
+                              className={`shrink-0 text-muted-foreground transition-colors ${
+                                notebook.id !== "all"
+                                  ? "hover:text-[#F6A800]"
+                                  : "cursor-default"
+                              }`}
                             >
                               <Star
                                 className={`h-4 w-4 ${
@@ -844,7 +966,7 @@ export default function NotesPage() {
                             <button
                               onClick={() => {
                                 setSelectedNotebook(notebook.id);
-                                setShowNotebookSheet(false); // Fecha o sheet
+                                setShowNotebookSheet(false);
                               }}
                               className={`flex-1 text-left px-3 py-2 rounded-md text-xs sm:text-sm transition-colors ${
                                 selectedNotebook === notebook.id
@@ -911,7 +1033,7 @@ export default function NotesPage() {
                         variant="ghost"
                         size="sm"
                         className="w-full justify-start text-xs sm:text-sm"
-                        onClick={() => (window.location.href = "/templates")}
+                        onClick={() => router.push("/templates")}
                       >
                         Gerenciar Templates
                       </Button>
@@ -938,7 +1060,7 @@ export default function NotesPage() {
                     variant="outline"
                     size="sm"
                     className="w-full text-xs sm:text-sm"
-                    onClick={handleAddNewNote} // Reutiliza a mesma função
+                    onClick={handleAddNewNote}
                   >
                     <Plus className="h-4 w-4 mr-2" />
                     Nova Nota
@@ -973,7 +1095,7 @@ export default function NotesPage() {
                           <div
                             onClick={() => {
                               setSelectedNote(note.id);
-                              setShowNoteSheet(false); // Fecha o sheet
+                              setShowNoteSheet(false);
                             }}
                             className="flex-1 cursor-pointer"
                           >
@@ -1018,9 +1140,10 @@ export default function NotesPage() {
                                     </DropdownMenuSubContent>
                                   </DropdownMenuSub>
                                   <DropdownMenuItem
-                                    onClick={() =>
-                                      setShowDeleteNoteDialog(true)
-                                    }
+                                    onClick={() => {
+                                      setSelectedNote(note.id);
+                                      setShowDeleteNoteDialog(true);
+                                    }}
                                     className="text-destructive focus:text-destructive"
                                   >
                                     <Trash2 className="h-4 w-4 mr-2" />
@@ -1057,7 +1180,6 @@ export default function NotesPage() {
 
           {/* Column 1: Notebooks (Cadernos) - Hidden on mobile */}
           <div className="hidden lg:flex flex-col lg:col-span-3 bg-card rounded-lg border p-4 overflow-y-auto">
-            {/* O conteúdo original da Coluna 1 foi movido para dentro do Sheet (acima) e copiado aqui */}
             <div className="space-y-4">
               <div>
                 <h2 className="font-semibold mb-3 text-sm sm:text-base">
@@ -1068,8 +1190,15 @@ export default function NotesPage() {
                     <div key={notebook.id} className="flex items-center gap-2">
                       <button
                         onClick={() => toggleNotebookFavorite(notebook.id)}
-                        disabled={togglingFavoriteNotebooks.has(notebook.id)}
-                        className="shrink-0 text-muted-foreground hover:text-[#F6A800] transition-colors"
+                        disabled={
+                          notebook.id === "all" ||
+                          togglingFavoriteNotebooks.has(notebook.id)
+                        }
+                        className={`shrink-0 text-muted-foreground transition-colors ${
+                          notebook.id !== "all"
+                            ? "hover:text-[#F6A800]"
+                            : "cursor-default"
+                        }`}
                       >
                         <Star
                           className={`h-4 w-4 ${
@@ -1146,7 +1275,7 @@ export default function NotesPage() {
                   variant="ghost"
                   size="sm"
                   className="w-full justify-start text-xs sm:text-sm"
-                  onClick={() => (window.location.href = "/templates")}
+                  onClick={() => router.push("/templates")}
                 >
                   Gerenciar Templates
                 </Button>
@@ -1161,7 +1290,7 @@ export default function NotesPage() {
                 variant="outline"
                 size="sm"
                 className="w-full text-xs sm:text-sm"
-                onClick={handleAddNewNote} // Vamos criar esta função
+                onClick={handleAddNewNote}
               >
                 <Plus className="h-4 w-4 mr-2" />
                 Nova Nota
@@ -1237,7 +1366,10 @@ export default function NotesPage() {
                                 </DropdownMenuSubContent>
                               </DropdownMenuSub>
                               <DropdownMenuItem
-                                onClick={() => setShowDeleteNoteDialog(true)}
+                                onClick={() => {
+                                  setSelectedNote(note.id);
+                                  setShowDeleteNoteDialog(true);
+                                }}
                                 className="text-destructive focus:text-destructive"
                               >
                                 <Trash2 className="h-4 w-4 mr-2" />
@@ -1275,7 +1407,6 @@ export default function NotesPage() {
               className="flex flex-col flex-1 overflow-hidden"
             >
               <div className="p-3 sm:p-4 border-b space-y-3 sm:space-y-4">
-                {/* Título e Tags (permanecem fora das abas) */}
                 <Input
                   value={noteTitle}
                   onChange={(e) => setNoteTitle(e.target.value)}
@@ -1285,10 +1416,9 @@ export default function NotesPage() {
                       ? "Dê um título para sua nova nota..."
                       : "Título da Nota"
                   }
-                  disabled={isLoadingNoteContent} // Desabilita enquanto carrega
+                  disabled={isLoadingNoteContent}
                 />
 
-                {/* Seção de Tags (com o Popover que fizemos) */}
                 {selectedNote !== null && !isLoadingNoteContent && (
                   <div className="flex items-center gap-2 flex-wrap">
                     {noteTags.map((tag, index) => (
@@ -1355,7 +1485,6 @@ export default function NotesPage() {
                   </div>
                 )}
 
-                {/* Barra de Abas (Editar / Visualizar) */}
                 <div className="flex items-center justify-between pt-2 border-t">
                   <TabsList className="h-9">
                     <TabsTrigger
@@ -1374,7 +1503,6 @@ export default function NotesPage() {
                     </TabsTrigger>
                   </TabsList>
 
-                  {/* Barra de Ferramentas (só aparece na aba "Editar") */}
                   <TabsContent value="edit" className="m-0 p-0">
                     <div className="flex items-center gap-1 overflow-x-auto">
                       <Button
@@ -1436,12 +1564,10 @@ export default function NotesPage() {
                       </Button>
                     </div>
                   </TabsContent>
-                  {/* Hack para esconder a barra de ferramentas na aba "Visualizar" */}
                   <TabsContent value="view" className="m-0 p-0"></TabsContent>
                 </div>
               </div>
 
-              {/* Conteúdo da Aba "Editar" */}
               <TabsContent
                 value="edit"
                 className="flex-1 overflow-y-auto min-h-0 focus-visible:ring-0 focus-visible:outline-none"
@@ -1463,7 +1589,6 @@ export default function NotesPage() {
                 </div>
               </TabsContent>
 
-              {/* Conteúdo da Aba "Visualizar" */}
               <TabsContent
                 value="view"
                 className="flex-1 overflow-y-auto min-h-0 focus-visible:ring-0 focus-visible:outline-none"
@@ -1492,7 +1617,7 @@ export default function NotesPage() {
                     <Button
                       variant="outline"
                       className="w-full sm:w-auto text-xs sm:text-sm bg-transparent"
-                      disabled={selectedNote === null} // Desabilita se for uma nota nova
+                      disabled={selectedNote === null}
                     >
                       <MoreVertical className="h-4 w-4 mr-2" />
                       Mais Opções
@@ -1500,17 +1625,43 @@ export default function NotesPage() {
                   </DropdownMenuTrigger>
                   <DropdownMenuContent>
                     <DropdownMenuItem
-                      onClick={() => setShowTemplateModal(true)}
+                      onClick={() => {
+                        let targetId = selectedNotebook;
+                        if (targetId === "all") {
+                          const qcNotebook = notebooks.find(
+                            (nb) => nb.name === "Capturas Rápidas"
+                          );
+                          if (qcNotebook) {
+                            targetId = qcNotebook.id;
+                          } else {
+                            toast.error(
+                              "Erro: Caderno 'Capturas Rápidas' não encontrado."
+                            );
+                            return;
+                          }
+                        }
+                        if(targetId) {
+                          setNotebookIdForTemplate(targetId);
+                          setShowTemplateModal(true);
+                        } else {
+                          toast.error("Por favor, selecione um caderno primeiro.");
+                        }
+                      }}
                     >
                       <BookOpen className="h-4 w-4 mr-2" />
                       Novo do Template
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={handleCreateTemplateFromNote}>
+                    <DropdownMenuItem
+                      onClick={handleCreateTemplateFromNote}
+                      disabled={selectedNote === null}
+                    >
                       <Plus className="h-4 w-4 mr-2" />
                       Criar Template desta Nota
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
+
+                {/* --- BOTÃO SALVAR (DE VOLTA!) --- */}
                 <Button
                   className="w-full sm:w-auto sm:ml-auto text-xs sm:text-sm"
                   onClick={handleSaveNote}
@@ -1519,13 +1670,15 @@ export default function NotesPage() {
                   {isSavingNote && <Spinner className="mr-2" />}
                   {isSavingNote ? "Salvando..." : "Salvar"}
                 </Button>
+                {/* --- FIM DO BOTÃO --- */}
+
               </div>
             </Tabs>
           </div>
         </div>
       </div>
 
-      {/* --- Modais (sem alteração) --- */}
+      {/* --- Modais --- */}
       <Dialog
         open={showNewNotebookModal}
         onOpenChange={setShowNewNotebookModal}
@@ -1608,29 +1761,36 @@ export default function NotesPage() {
         </DialogContent>
       </Dialog>
 
-      <TemplateSelectionModal
-        open={showTemplateModal}
-        onOpenChange={setShowTemplateModal}
-      />
+      {notebookIdForTemplate && (
+        <TemplateSelectionModal
+          open={showTemplateModal}
+          onOpenChange={setShowTemplateModal}
+          targetNotebookId={notebookIdForTemplate}
+        />
+      )}
 
       <Dialog
         open={showCreateTemplateModal}
-        onOpenChange={setShowCreateTemplateModal}
+        onOpenChange={(open) => {
+          if (!open) setNewTemplateName("");
+          setShowCreateTemplateModal(open);
+        }}
       >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Criar Template desta Nota</DialogTitle>
             <DialogDescription>
-              Esta nota será salva como um template que você pode reutilizar.
+              O conteúdo da nota atual será salvo como um template reutilizável.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="template-title">Título do Template:</Label>
+              <Label htmlFor="template-title">Nome do Template:</Label>
               <Input
                 id="template-title"
-                placeholder="Ex.: Reunião Semanal"
-                defaultValue={noteTitle}
+                value={newTemplateName}
+                onChange={(e) => setNewTemplateName(e.target.value)}
+                disabled={isCreatingTemplate}
               />
             </div>
           </div>
@@ -1638,16 +1798,16 @@ export default function NotesPage() {
             <Button
               variant="outline"
               onClick={() => setShowCreateTemplateModal(false)}
+              disabled={isCreatingTemplate}
             >
               Cancelar
             </Button>
             <Button
-              onClick={() => {
-                // TODO: Save template logic
-                setShowCreateTemplateModal(false);
-              }}
+              onClick={handleConfirmCreateTemplate}
+              disabled={isCreatingTemplate}
             >
-              Criar Template
+              {isCreatingTemplate ? <Spinner className="mr-2" /> : null}
+              {isCreatingTemplate ? "Criando..." : "Criar Template"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1689,9 +1849,8 @@ export default function NotesPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Apagar Caderno</AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja apagar este caderno? Todas as notas dentro
-              dele serão movidas para "Outras Notas". Esta ação não pode ser
-              desfeita.
+              Tem certeza que deseja apagar este caderno? Esta ação não pode ser
+              desfeita e **todas as notas dentro dele serão apagadas**.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1704,7 +1863,7 @@ export default function NotesPage() {
               disabled={isDeletingNotebook}
             >
               {isDeletingNotebook && <Spinner className="mr-2" />}
-              {isDeletingNotebook ? "Apagando..." : "Apagar"}
+              {isDeletingNotebook ? "Apagar" : "Apagar"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
