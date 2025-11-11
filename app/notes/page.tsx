@@ -101,8 +101,6 @@ interface Note {
 
 export default function NotesPage() {
   const router = useRouter();
-  
-  // Lê os searchParams UMA VEZ no carregamento
   const searchParams = useSearchParams();
   const newNoteParam = searchParams.get("new");
   const noteIdParam = searchParams.get("note");
@@ -174,7 +172,6 @@ export default function NotesPage() {
 
   const getTagColor = (index: number) => tagColors[index % tagColors.length];
 
-  // Efeito para buscar Cadernos e Tags (apenas uma vez)
   useEffect(() => {
     const fetchNotebooks = async () => {
       setIsLoadingNotebooks(true);
@@ -196,8 +193,6 @@ export default function NotesPage() {
         const notebooksData = [allNotesNotebook, ...response.data];
         setNotebooks(notebooksData);
 
-        // --- LÓGICA DE SELEÇÃO INICIAL ---
-        // Decide qual caderno selecionar com base nos parâmetros da URL
         if (newNoteParam === "true") {
           const qcNotebook = notebooksData.find(
             (nb) => nb.name === "Capturas Rápidas"
@@ -208,8 +203,6 @@ export default function NotesPage() {
         } else {
           setSelectedNotebook("all");
         }
-        // --- FIM DA LÓGICA DE SELEÇÃO ---
-
       } catch (err: any) {
         console.error("Erro ao buscar cadernos: ", err);
         if (err.response && err.response.status === 401) {
@@ -231,17 +224,15 @@ export default function NotesPage() {
 
     fetchNotebooks();
     fetchTags();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router]); // Executa apenas uma vez
+  }, [router]);
 
-  // Efeito para buscar notas quando o caderno muda
   useEffect(() => {
-    if (!selectedNotebook) return; // Aguarda o primeiro efeito definir
+    if (!selectedNotebook) return;
 
     const fetchNotes = async () => {
       setIsLoadingNotes(true);
-      setNotes([]); 
-      setSelectedNote(null); 
+      setNotes([]);
+      setSelectedNote(null);
 
       try {
         let response;
@@ -256,26 +247,25 @@ export default function NotesPage() {
         const newNotes = response.data;
         setNotes(newNotes);
 
-        // --- LÓGICA DE SELEÇÃO PÓS-FETCH ---
-        // Verifica os parâmetros da URL lidos no carregamento
-        if (newNoteParam === "true" && notebookIdParam === selectedNotebook) {
-          // É o fluxo "Nota do Zero"
-          setSelectedNote(null);
+        const qcNotebook = notebooks.find(
+          (nb) => nb.name === "Capturas Rápidas"
+        );
+
+        if (newNoteParam === "true" && selectedNotebook === qcNotebook?.id) {
+          setSelectedNote(null); 
           router.replace("/notes", { scroll: false }); 
         } else if (noteIdParam && notebookIdParam === selectedNotebook) {
-          // É o fluxo "Template"
           if (newNotes.some((n) => n.id === noteIdParam)) {
-            setSelectedNote(noteIdParam); 
+            setSelectedNote(noteIdParam);
+          } else if (newNotes.length > 0) {
+            setSelectedNote(newNotes[0].id);
           }
-          router.replace("/notes", { scroll: false }); 
+          router.replace("/notes", { scroll: false });
         } else if (newNotes.length > 0) {
-          // Comportamento padrão: seleciona a primeira nota
           setSelectedNote(newNotes[0].id);
         } else {
-          // Caderno vazio, não seleciona nada
           setSelectedNote(null);
         }
-        // --- FIM DA LÓGICA ---
       } catch (err: any) {
         console.error("Erro ao buscar notas: ", err);
         setNotes([]);
@@ -288,13 +278,10 @@ export default function NotesPage() {
     };
 
     fetchNotes();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedNotebook, router]); // Depende apenas do caderno selecionado
+  }, [selectedNotebook, router]);
 
-  // Efeito para carregar o conteúdo da nota selecionada
   useEffect(() => {
     if (!selectedNote) {
-      // Limpa o editor se nenhuma nota estiver selecionada (ex: "Nova Nota")
       setNoteTitle("");
       setNoteContent("");
       setNoteTags([]);
@@ -311,9 +298,8 @@ export default function NotesPage() {
       setNoteTags(note.tags || []);
       setIsLoadingNoteContent(false);
     }
-  }, [selectedNote, notes]); // CORREÇÃO: Depende apenas de selectedNote e notes
+  }, [selectedNote, notes]);
 
-  // Efeito para sugestão de tags
   useEffect(() => {
     if (newTag.trim().length > 0) {
       const noteTagIds = new Set(noteTags.map((t) => t.id));
@@ -330,10 +316,8 @@ export default function NotesPage() {
       setTagSuggestions([]);
       setShowTagSuggestions(false);
     }
-  }, [newTag, allUserTags, noteTags]); // CORREÇÃO: Dependências corretas
+  }, [newTag, allUserTags, noteTags]);
 
-  
-  // --- INÍCIO DAS FUNÇÕES HANDLER ---
 
   const handleAddTag = async () => {
     if (!newTag.trim() || !selectedNote) return;
@@ -450,7 +434,7 @@ export default function NotesPage() {
 
       const newNotebook = response.data;
 
-      setNotebooks((prev) => [...prev, newNotebook]); 
+      setNotebooks((prev) => [...prev, newNotebook]);
 
       toast.success("Caderno criado com sucesso!", {
         id: toastId,
@@ -520,35 +504,34 @@ export default function NotesPage() {
   };
 
   const handleMoveNote = async (targetNotebookId: string) => {
-    const noteIdToMove = noteToMove; // Captura o ID da nota a ser movida
+    const noteIdToMove = noteToMove;
     if (!noteIdToMove) return;
 
     const noteToMoveObj = notes.find((n) => n.id === noteIdToMove);
     if (!noteToMoveObj || isMovingNote) return;
-  
+
     setIsMovingNote(true);
     const toastId = toast.loading("Movendo nota...");
-  
+
     try {
       await api.patch(
         `/notebooks/${noteToMoveObj.notebook_id}/notes/${noteToMoveObj.id}`,
         { notebook_id: targetNotebookId }
       );
-  
-      // Remove a nota da lista de notas atual
+
       setNotes((prev) => prev.filter((n) => n.id !== noteIdToMove));
-  
+
       if (selectedNote === noteIdToMove) {
         setSelectedNote(null);
       }
-  
+
       toast.success("Nota movida com sucesso!", { id: toastId });
     } catch (err: any) {
       console.error("Erro ao mover nota:", err);
       toast.error("Erro ao mover nota. Tente novamente.", { id: toastId });
     } finally {
       setIsMovingNote(false);
-      setNoteToMove(null); 
+      setNoteToMove(null);
     }
   };
 
@@ -623,12 +606,12 @@ export default function NotesPage() {
   };
 
   const handleAddNewNote = () => {
-    setSelectedNote(null); 
+    setSelectedNote(null);
     setNoteTitle("");
     setNoteContent("");
     setNoteTags([]);
     setShowNoteSheet(false);
-    router.replace("/notes", { scroll: false }); 
+    router.replace("/notes", { scroll: false });
   };
 
   const handleSaveNote = async () => {
@@ -637,7 +620,6 @@ export default function NotesPage() {
 
     try {
       if (selectedNote) {
-        // --- ATUALIZANDO NOTA EXISTENTE ---
         const noteToSave = notes.find((n) => n.id === selectedNote);
         if (!noteToSave) {
           throw new Error("Nota selecionada não encontrada para atualização.");
@@ -646,7 +628,7 @@ export default function NotesPage() {
         const response = await api.patch<Note>(
           `/notebooks/${noteToSave.notebook_id}/notes/${noteToSave.id}`,
           {
-            title: noteTitle || "Nota sem título", 
+            title: noteTitle || "Nota sem título",
             content: noteContent,
           }
         );
@@ -657,7 +639,6 @@ export default function NotesPage() {
 
         toast.success("Nota salva com sucesso!", { id: toastId });
       } else {
-        // --- CRIANDO NOTA NOVA ---
         if (!selectedNotebook) {
           toast.error("Erro: Nenhum caderno selecionado.", { id: toastId });
           return;
@@ -687,22 +668,21 @@ export default function NotesPage() {
         );
 
         const newNote = response.data;
-        
-        // Adiciona a nova nota à lista
+
         setNotes((prev) => [newNote, ...prev]);
-        
-        // Se o caderno selecionado for o "all" ou o caderno de destino,
-        // a nota já está na lista. Apenas seleciona.
-        if (selectedNotebook === "all" || selectedNotebook === targetNotebookId) {
-          setNotes((prev) => [newNote, ...prev.filter(n => n.id !== newNote.id)]);
+
+        if (
+          selectedNotebook === "all" ||
+          selectedNotebook === targetNotebookId
+        ) {
+          setNotes((prev) => [
+            newNote,
+            ...prev.filter((n) => n.id !== newNote.id),
+          ]);
         } else {
-          // Se estava em outro caderno (ex: "Todas as Notas") e criou
-          // em "Capturas Rápidas", não precisa mudar a lista de "Todas as Notas"
-          // Apenas seleciona o caderno "Capturas Rápidas"
           setSelectedNotebook(targetNotebookId);
-          // O useEffect[selectedNotebook] vai buscar as notas e selecionar a nova
         }
-        
+
         setSelectedNote(newNote.id);
         setNoteTags(newNote.tags || []);
 
@@ -892,7 +872,6 @@ export default function NotesPage() {
       setIsDeletingNotebook(false);
     }
   };
-  // --- Fim Funções ---
 
   const selectedNotebookName =
     notebooks.find((nb) => nb.id === selectedNotebook)?.name || "Caderno";
@@ -903,7 +882,6 @@ export default function NotesPage() {
   return (
     <AppShell>
       <div className="flex flex-col h-[calc(100vh-10rem)] sm:h-[calc(100vh-8rem)]">
-        {/* Back to Dashboard */}
         <div className="mb-4">
           <Link href="/dashboard">
             <Button variant="ghost" size="sm">
@@ -918,9 +896,7 @@ export default function NotesPage() {
         </h1>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 flex-1 overflow-hidden">
-          {/* Mobile Navigation Sheets */}
           <div className="lg:hidden col-span-1 grid grid-cols-2 gap-4">
-            {/* Botão para abrir Sheet de Cadernos */}
             <Sheet open={showNotebookSheet} onOpenChange={setShowNotebookSheet}>
               <SheetTrigger asChild>
                 <Button variant="outline" className="justify-start truncate">
@@ -1043,7 +1019,6 @@ export default function NotesPage() {
               </SheetContent>
             </Sheet>
 
-            {/* Botão para abrir Sheet de Notas */}
             <Sheet open={showNoteSheet} onOpenChange={setShowNoteSheet}>
               <SheetTrigger asChild>
                 <Button variant="outline" className="justify-start truncate">
@@ -1610,7 +1585,7 @@ export default function NotesPage() {
                 </div>
               </TabsContent>
 
-              {/* Rodapé com Botões (permanece fora das abas) */}
+              {/* Rodapé com Botões */}
               <div className="p-3 sm:p-4 border-t flex flex-col sm:flex-row gap-2 mt-auto">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -1640,11 +1615,13 @@ export default function NotesPage() {
                             return;
                           }
                         }
-                        if(targetId) {
+                        if (targetId) {
                           setNotebookIdForTemplate(targetId);
                           setShowTemplateModal(true);
                         } else {
-                          toast.error("Por favor, selecione um caderno primeiro.");
+                          toast.error(
+                            "Por favor, selecione um caderno primeiro."
+                          );
                         }
                       }}
                     >
@@ -1660,8 +1637,6 @@ export default function NotesPage() {
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
-
-                {/* --- BOTÃO SALVAR (DE VOLTA!) --- */}
                 <Button
                   className="w-full sm:w-auto sm:ml-auto text-xs sm:text-sm"
                   onClick={handleSaveNote}
@@ -1670,15 +1645,12 @@ export default function NotesPage() {
                   {isSavingNote && <Spinner className="mr-2" />}
                   {isSavingNote ? "Salvando..." : "Salvar"}
                 </Button>
-                {/* --- FIM DO BOTÃO --- */}
-
               </div>
             </Tabs>
           </div>
         </div>
       </div>
 
-      {/* --- Modais --- */}
       <Dialog
         open={showNewNotebookModal}
         onOpenChange={setShowNewNotebookModal}
