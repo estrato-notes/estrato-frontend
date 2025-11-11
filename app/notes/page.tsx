@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,8 @@ import {
   Edit2,
   FolderInput,
   FileText,
+  Eye,
+  Pencil,
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -65,6 +67,10 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+import ReactMarkdown from "react-markdown";
 import api from "@/lib/api/api";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "sonner";
@@ -144,6 +150,7 @@ export default function NotesPage() {
   const [isTagLoading, setIsTagLoading] = useState(false);
   const [tagSuggestions, setTagSuggestions] = useState<Tag[]>([]);
   const [showTagSuggestions, setShowTagSuggestions] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const tagColors = [
     "bg-blue-100 text-blue-700 hover:bg-blue-200",
@@ -495,33 +502,145 @@ export default function NotesPage() {
   };
 
   const applyFormatting = (format: string) => {
-    // TODO: Implement markdown formatting
-    console.log("Apply formatting:", format);
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selectedText = noteContent.substring(start, end);
+
+    let prefix = "";
+    let suffix = "";
+    let placeholder = "";
+
+    switch (format) {
+      case "h1":
+        prefix = "# ";
+        placeholder = "Cabeçalho 1";
+        break;
+      case "h2":
+        prefix = "## ";
+        placeholder = "Cabeçalho 2";
+        break;
+      case "h3":
+        prefix = "### ";
+        placeholder = "Cabeçalho 3";
+        break;
+      case "bold":
+        prefix = "**";
+        suffix = "**";
+        placeholder = "negrito";
+        break;
+      case "italic":
+        prefix = "*";
+        suffix = "*";
+        placeholder = "itálico";
+        break;
+      case "underline":
+        prefix = "<u>";
+        suffix = "</u>";
+        placeholder = "sublinhado";
+        break;
+      case "code":
+        prefix = "`";
+        suffix = "`";
+        placeholder = "código";
+        break;
+      default:
+        return;
+    }
+
+    const textToInsert = selectedText || placeholder;
+    const markdown = prefix + textToInsert + suffix;
+    const newContent =
+      noteContent.substring(0, start) + markdown + noteContent.substring(end);
+
+    setNoteContent(newContent);
+
+    setTimeout(() => {
+      textarea.focus();
+      if (!selectedText) {
+        textarea.setSelectionRange(
+          start + prefix.length,
+          start + prefix.length + placeholder.length
+        );
+      } else {
+        const newCursorPos = start + markdown.length;
+        textarea.setSelectionRange(newCursorPos, newCursorPos);
+      }
+    }, 0);
+  };
+
+  const handleAddNewNote = () => {
+    setSelectedNote(null);
+    setNoteTitle("");
+    setNoteContent("");
+    setNoteTags([]);
+    setShowNoteSheet(false);
   };
 
   const handleSaveNote = async () => {
-    if (!selectedNote) return;
-
-    const noteToSave = notes.find((n) => n.id === selectedNote);
-    if (!noteToSave) return;
-
     setIsSavingNote(true);
     const toastId = toast.loading("Salvando nota...");
 
     try {
-      const response = await api.patch<Note>(
-        `/notebooks/${noteToSave.notebook_id}/notes/${noteToSave.id}`,
-        {
-          title: noteTitle,
-          content: noteContent,
+      if (selectedNote) {
+        const noteToSave = notes.find((n) => n.id === selectedNote);
+        if (!noteToSave) {
+          throw new Error("Nota selecionada não encontrada para atualização.");
         }
-      );
 
-      setNotes((prev) =>
-        prev.map((n) => (n.id === selectedNote ? response.data : n))
-      );
+        const response = await api.patch<Note>(
+          `/notebooks/${noteToSave.notebook_id}/notes/${noteToSave.id}`,
+          {
+            title: noteTitle,
+            content: noteContent,
+          }
+        );
 
-      toast.success("Nota salva com sucesso!", { id: toastId });
+        setNotes((prev) =>
+          prev.map((n) => (n.id === selectedNote ? response.data : n))
+        );
+
+        toast.success("Nota salva com sucesso!", { id: toastId });
+      } else {
+        if (!selectedNotebook) {
+          toast.error("Erro: Nenhum caderno selecionado.", { id: toastId });
+          return;
+        }
+
+        let targetNotebookId = selectedNotebook;
+
+        if (targetNotebookId === "all") {
+          const quickCaptureNotebook = notebooks.find(
+            (nb) => nb.name === "Capturas Rápidas"
+          );
+
+          if (!quickCaptureNotebook) {
+            toast.error("Caderno 'Capturas Rápidas' não encontrado.", {
+              id: toastId,
+            });
+            return;
+          }
+          targetNotebookId = quickCaptureNotebook.id;
+        }
+
+        const response = await api.post<Note>(
+          `/notebooks/${targetNotebookId}/notes/`,
+          {
+            title: noteTitle || "Nova Nota",
+            content: noteContent,
+          }
+        );
+
+        const newNote = response.data;
+
+        setNotes((prev) => [newNote, ...prev]);
+        setSelectedNote(newNote.id);
+        setNoteTags(newNote.tags || []);
+
+        toast.success("Nota criada com sucesso!", { id: toastId });
+      }
     } catch (err) {
       console.error("Erro ao salvar nota:", err);
       toast.error("Erro ao salvar nota. Tente novamente.", { id: toastId });
@@ -814,7 +933,18 @@ export default function NotesPage() {
                 <SheetHeader>
                   <SheetTitle>Notas</SheetTitle>
                 </SheetHeader>
-                {/* Reutiliza a Coluna 2 aqui dentro */}
+                <div className="p-1 mt-4 border-b">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full text-xs sm:text-sm"
+                    onClick={handleAddNewNote} // Reutiliza a mesma função
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Nova Nota
+                  </Button>
+                </div>
+
                 <div className="flex-1 overflow-y-auto p-2 mt-4">
                   <div className="space-y-2">
                     {notes.map((note, noteIndex) => (
@@ -1026,7 +1156,17 @@ export default function NotesPage() {
 
           {/* Column 2: Notes List - Hidden on mobile */}
           <div className="hidden lg:flex flex-col lg:col-span-4 bg-card rounded-lg border overflow-hidden">
-            {/* O conteúdo original da Coluna 2 foi movido para dentro do Sheet (acima) e copiado aqui */}
+            <div className="p-2 border-b">
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full text-xs sm:text-sm"
+                onClick={handleAddNewNote} // Vamos criar esta função
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Nova Nota
+              </Button>
+            </div>
             <div className="flex-1 overflow-y-auto p-2">
               <div className="space-y-2">
                 {notes.map((note, noteIndex) => (
@@ -1130,184 +1270,257 @@ export default function NotesPage() {
 
           {/* Column 3: Note Editor - Spans full width on mobile */}
           <div className="col-span-1 lg:col-span-5 bg-card rounded-lg border overflow-hidden flex flex-col">
-            {/* --- FIM DAS MODIFICAÇÕES --- */}
+            <Tabs
+              defaultValue="edit"
+              className="flex flex-col flex-1 overflow-hidden"
+            >
+              <div className="p-3 sm:p-4 border-b space-y-3 sm:space-y-4">
+                {/* Título e Tags (permanecem fora das abas) */}
+                <Input
+                  value={noteTitle}
+                  onChange={(e) => setNoteTitle(e.target.value)}
+                  className="text-base sm:text-lg font-semibold border-0 px-0 focus-visible:ring-0"
+                  placeholder={
+                    selectedNote === null
+                      ? "Dê um título para sua nova nota..."
+                      : "Título da Nota"
+                  }
+                  disabled={isLoadingNoteContent} // Desabilita enquanto carrega
+                />
 
-            <div className="p-3 sm:p-4 border-b space-y-3 sm:space-y-4">
-              <Input
-                value={noteTitle}
-                onChange={(e) => setNoteTitle(e.target.value)}
-                className="text-base sm:text-lg font-semibold border-0 px-0 focus-visible:ring-0"
-                placeholder="Título da Nota"
-              />
-
-              <div className="flex items-center gap-2 flex-wrap">
-                {noteTags.map((tag, index) => (
-                  <Badge
-                    key={tag.id}
-                    className={`cursor-pointer text-xs ${getTagColor(index)}`}
-                    onClick={() => handleRemoveTag(tag.id)}
-                  >
-                    {tag.name}
-                  </Badge>
-                ))}
-                <Popover
-                  open={showTagSuggestions}
-                  onOpenChange={setShowTagSuggestions}
-                >
-                  <PopoverAnchor asChild>
-                    <div className="flex items-center gap-2 relative">
-                      <Input
-                        value={newTag}
-                        onChange={(e) => setNewTag(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && handleAddTag()}
-                        placeholder={
-                          isTagLoading ? "Adicionando..." : "nova tag"
-                        }
-                        className="h-7 w-20 sm:w-24 text-xs"
-                        disabled={isTagLoading}
-                        autoComplete="off" // Previne o autocomplete do navegador
-                      />
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={handleAddTag}
-                        disabled={isTagLoading}
+                {/* Seção de Tags (com o Popover que fizemos) */}
+                {selectedNote !== null && !isLoadingNoteContent && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {noteTags.map((tag, index) => (
+                      <Badge
+                        key={tag.id}
+                        className={`cursor-pointer text-xs ${getTagColor(
+                          index
+                        )}`}
+                        onClick={() => handleRemoveTag(tag.id)}
                       >
-                        {isTagLoading ? (
-                          <Spinner className="h-3 w-3" />
-                        ) : (
-                          <Plus className="h-3 w-3" />
-                        )}
+                        {tag.name}
+                      </Badge>
+                    ))}
+                    <Popover
+                      open={showTagSuggestions}
+                      onOpenChange={setShowTagSuggestions}
+                    >
+                      <PopoverAnchor asChild>
+                        <div className="flex items-center gap-2 relative">
+                          <Input
+                            value={newTag}
+                            onChange={(e) => setNewTag(e.target.value)}
+                            onKeyDown={(e) =>
+                              e.key === "Enter" && handleAddTag()
+                            }
+                            placeholder={
+                              isTagLoading ? "Adicionando..." : "nova tag"
+                            }
+                            className="h-7 w-20 sm:w-24 text-xs"
+                            disabled={isTagLoading}
+                            autoComplete="off"
+                          />
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={handleAddTag}
+                            disabled={isTagLoading}
+                          >
+                            {isTagLoading ? (
+                              <Spinner className="h-3 w-3" />
+                            ) : (
+                              <Plus className="h-3 w-3" />
+                            )}
+                          </Button>
+                        </div>
+                      </PopoverAnchor>
+                      <PopoverContent
+                        className="w-[150px] p-1"
+                        onOpenAutoFocus={(e) => e.preventDefault()}
+                      >
+                        <div className="max-h-48 overflow-y-auto">
+                          {tagSuggestions.map((tag) => (
+                            <button
+                              key={tag.id}
+                              className="w-full text-left p-2 text-xs rounded-sm hover:bg-accent"
+                              onClick={() => handleAssociateTag(tag)}
+                            >
+                              {tag.name}
+                            </button>
+                          ))}
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                )}
+
+                {/* Barra de Abas (Editar / Visualizar) */}
+                <div className="flex items-center justify-between pt-2 border-t">
+                  <TabsList className="h-9">
+                    <TabsTrigger
+                      value="edit"
+                      className="h-7 text-xs sm:text-sm"
+                    >
+                      <Pencil className="h-4 w-4 mr-2" />
+                      Editar
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="view"
+                      className="h-7 text-xs sm:text-sm"
+                    >
+                      <Eye className="h-4 w-4 mr-2" />
+                      Visualizar
+                    </TabsTrigger>
+                  </TabsList>
+
+                  {/* Barra de Ferramentas (só aparece na aba "Editar") */}
+                  <TabsContent value="edit" className="m-0 p-0">
+                    <div className="flex items-center gap-1 overflow-x-auto">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => applyFormatting("h1")}
+                        className="h-8 px-2 text-xs"
+                      >
+                        H1
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => applyFormatting("h2")}
+                        className="h-8 px-2 text-xs"
+                      >
+                        H2
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => applyFormatting("h3")}
+                        className="h-8 px-2 text-xs"
+                      >
+                        H3
+                      </Button>
+                      <div className="w-px h-6 bg-border mx-1" />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => applyFormatting("bold")}
+                        className="h-8 px-2"
+                      >
+                        <Bold className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => applyFormatting("italic")}
+                        className="h-8 px-2"
+                      >
+                        <Italic className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => applyFormatting("underline")}
+                        className="h-8 px-2"
+                      >
+                        <Underline className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => applyFormatting("code")}
+                        className="h-8 px-2"
+                      >
+                        <Code className="h-4 w-4" />
                       </Button>
                     </div>
-                  </PopoverAnchor>
-                  <PopoverContent
-                    className="w-[150px] p-1" // Ajuste a largura conforme necessário
-                    onOpenAutoFocus={(e) => e.preventDefault()} // Impede o popover de roubar o foco do input
-                  >
-                    <div className="max-h-48 overflow-y-auto">
-                      {tagSuggestions.map((tag) => (
-                        <button
-                          key={tag.id}
-                          className="w-full text-left p-2 text-xs rounded-sm hover:bg-accent"
-                          onClick={() => handleAssociateTag(tag)} // Usa o novo handler
-                        >
-                          {tag.name}
-                        </button>
-                      ))}
-                    </div>
-                  </PopoverContent>
-                </Popover>
-              </div>
-
-              {/* Formatting Toolbar */}
-              <div className="flex items-center gap-1 pt-2 border-t overflow-x-auto">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => applyFormatting("h1")}
-                  className="h-8 px-2 text-xs"
-                >
-                  H1
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => applyFormatting("h2")}
-                  className="h-8 px-2 text-xs"
-                >
-                  H2
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => applyFormatting("h3")}
-                  className="h-8 px-2 text-xs"
-                >
-                  H3
-                </Button>
-                <div className="w-px h-6 bg-border mx-1" />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => applyFormatting("bold")}
-                  className="h-8 px-2"
-                >
-                  <Bold className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => applyFormatting("italic")}
-                  className="h-8 px-2"
-                >
-                  <Italic className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => applyFormatting("underline")}
-                  className="h-8 px-2"
-                >
-                  <Underline className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => applyFormatting("code")}
-                  className="h-8 px-2"
-                >
-                  <Code className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-
-            <div className="flex-1 p-3 sm:p-4 overflow-y-auto min-h-0">
-              {isLoadingNoteContent ? (
-                <div className="flex items-center justify-center h-full">
-                  <Spinner className="h-6 w-6" />
+                  </TabsContent>
+                  {/* Hack para esconder a barra de ferramentas na aba "Visualizar" */}
+                  <TabsContent value="view" className="m-0 p-0"></TabsContent>
                 </div>
-              ) : (
-                <Textarea
-                  value={noteContent}
-                  onChange={(e) => setNoteContent(e.target.value)}
-                  className="h-full min-h-[300px] sm:min-h-full border-0 focus-visible:ring-0 resize-none font-mono text-xs sm:text-sm"
-                  placeholder="Comece a escrever aqui..."
-                />
-              )}
-            </div>
+              </div>
 
-            <div className="p-3 sm:p-4 border-t flex flex-col sm:flex-row gap-2">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className="w-full sm:w-auto text-xs sm:text-sm bg-transparent"
-                  >
-                    <MoreVertical className="h-4 w-4 mr-2" />
-                    Mais Opções
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                  <DropdownMenuItem onClick={() => setShowTemplateModal(true)}>
-                    <BookOpen className="h-4 w-4 mr-2" />
-                    Novo do Template
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleCreateTemplateFromNote}>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Criar Template desta Nota
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <Button
-                className="w-full sm:w-auto sm:ml-auto text-xs sm:text-sm"
-                onClick={handleSaveNote}
-                disabled={!selectedNote || isSavingNote}
+              {/* Conteúdo da Aba "Editar" */}
+              <TabsContent
+                value="edit"
+                className="flex-1 overflow-y-auto min-h-0 focus-visible:ring-0 focus-visible:outline-none"
               >
-                {isSavingNote && <Spinner className="mr-2" />}
-                {isSavingNote ? "Salvando..." : "Salvar"}
-              </Button>
-            </div>
+                <div className="p-3 sm:p-4 h-full">
+                  {isLoadingNoteContent ? (
+                    <div className="flex items-center justify-center h-full">
+                      <Spinner className="h-6 w-6" />
+                    </div>
+                  ) : (
+                    <Textarea
+                      ref={textareaRef}
+                      value={noteContent}
+                      onChange={(e) => setNoteContent(e.target.value)}
+                      className="h-full min-h-[300px] sm:min-h-full border-0 focus-visible:ring-0 resize-none font-mono text-xs sm:text-sm p-0"
+                      placeholder="Comece a escrever aqui..."
+                    />
+                  )}
+                </div>
+              </TabsContent>
+
+              {/* Conteúdo da Aba "Visualizar" */}
+              <TabsContent
+                value="view"
+                className="flex-1 overflow-y-auto min-h-0 focus-visible:ring-0 focus-visible:outline-none"
+              >
+                <div className="p-3 sm:p-4">
+                  {isLoadingNoteContent ? (
+                    <div className="flex items-center justify-center h-full">
+                      <Spinner className="h-6 w-6" />
+                    </div>
+                  ) : noteContent.trim() ? (
+                    <div className="markdown-preview">
+                      <ReactMarkdown>{noteContent}</ReactMarkdown>
+                    </div>
+                  ) : (
+                    <p className="text-muted-foreground text-center italic">
+                      Nada para visualizar.
+                    </p>
+                  )}
+                </div>
+              </TabsContent>
+
+              {/* Rodapé com Botões (permanece fora das abas) */}
+              <div className="p-3 sm:p-4 border-t flex flex-col sm:flex-row gap-2 mt-auto">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="w-full sm:w-auto text-xs sm:text-sm bg-transparent"
+                      disabled={selectedNote === null} // Desabilita se for uma nota nova
+                    >
+                      <MoreVertical className="h-4 w-4 mr-2" />
+                      Mais Opções
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent>
+                    <DropdownMenuItem
+                      onClick={() => setShowTemplateModal(true)}
+                    >
+                      <BookOpen className="h-4 w-4 mr-2" />
+                      Novo do Template
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleCreateTemplateFromNote}>
+                      <Plus className="h-4 w-4 mr-2" />
+                      Criar Template desta Nota
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <Button
+                  className="w-full sm:w-auto sm:ml-auto text-xs sm:text-sm"
+                  onClick={handleSaveNote}
+                  disabled={isSavingNote}
+                >
+                  {isSavingNote && <Spinner className="mr-2" />}
+                  {isSavingNote ? "Salvando..." : "Salvar"}
+                </Button>
+              </div>
+            </Tabs>
           </div>
         </div>
       </div>
