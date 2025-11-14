@@ -1,8 +1,8 @@
 import axios from "axios";
 
-const authApi = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_AUTH_API_URL,
-});
+export const authApi = axios.create({
+  baseURL: `${process.env.NEXT_PUBLIC_API_URL}/auth`,
+})
 
 authApi.interceptors.request.use(
   (config) => {
