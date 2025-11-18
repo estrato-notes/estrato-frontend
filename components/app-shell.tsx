@@ -29,6 +29,7 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
+  PopoverAnchor, // Adicionado aqui
 } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -40,7 +41,6 @@ import {
 } from "@/components/ui/sheet";
 import authApi from "@/lib/api/authApi";
 import api from "@/lib/api/api";
-import { Spinner } from "./ui/spinner";
 
 interface User {
   id: string;
@@ -266,7 +266,7 @@ export function AppShell({ children }: AppShellProps) {
               open={showSearchResults}
               onOpenChange={setShowSearchResults}
             >
-              <PopoverTrigger asChild>
+              <PopoverAnchor asChild>
                 <div className="relative w-full">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
@@ -274,16 +274,20 @@ export function AppShell({ children }: AppShellProps) {
                     placeholder="Buscar notas, cadernos, tags..."
                     value={searchQuery}
                     onChange={(e) => handleSearch(e.target.value)}
+                    onClick={() => {
+                      if (searchQuery.trim().length > 0) setShowSearchResults(true);
+                    }}
                     onFocus={() =>
                       searchQuery.length >= 2 && setShowSearchResults(true)
                     }
                     className="w-full pl-10"
                   />
                 </div>
-              </PopoverTrigger>
+              </PopoverAnchor>
               <PopoverContent
                 className="w-[90vw] md:w-[600px] p-0"
                 align="center"
+                onOpenAutoFocus={(e) => e.preventDefault()}
               >
                 <div className="max-h-[400px] overflow-y-auto">
                   {isSearching ? (
