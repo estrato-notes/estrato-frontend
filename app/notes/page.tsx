@@ -193,22 +193,16 @@ export default function NotesPage() {
         const notebooksData = [allNotesNotebook, ...response.data];
         setNotebooks(notebooksData);
 
-        // LÓGICA DE SELEÇÃO CORRIGIDA
         if (notebookIdParam) {
-          // 1. Prioriza o caderno se ele for passado (ex: /notes?notebook=ID)
           setSelectedNotebook(notebookIdParam);
         } else if (newNoteParam === "true") {
-          // 2. Se for uma nota nova, mira nas Capturas Rápidas
           const qcNotebook = notebooksData.find(
             (nb) => nb.name === "Capturas Rápidas"
           );
           setSelectedNotebook(qcNotebook?.id || "all");
         } else if (noteIdParam) {
-          // 3. Se SÓ a nota for passada (ex: vindo da busca/dashboard)
-          //    força carregar "Todas as Notas" para podermos encontrá-la.
           setSelectedNotebook("all");
         } else {
-          // 4. Caso padrão (sem params), carrega "Todas as Notas"
           setSelectedNotebook("all");
         }
       } catch (err: any) {
@@ -255,37 +249,27 @@ export default function NotesPage() {
         const newNotes = response.data;
         setNotes(newNotes);
 
+        setFavoriteNotes(
+          newNotes.filter((n) => n.is_favorite).map((n) => n.id)
+        );
+
         const qcNotebook = notebooks.find(
           (nb) => nb.name === "Capturas Rápidas"
         );
 
-        // LÓGICA DE SELEÇÃO DE NOTA CORRIGIDA E SIMPLIFICADA
-
-        // Caso 1: É uma nota nova?
         if (newNoteParam === "true" && selectedNotebook === qcNotebook?.id) {
           setSelectedNote(null);
           router.replace("/notes", { scroll: false });
-
-          // Caso 2: Um noteId foi passado E nós encontramos essa nota na lista carregada?
-          // (Isso funciona se selectedNotebook="all" ou se for o caderno correto)
         } else if (noteIdParam && newNotes.some((n) => n.id === noteIdParam)) {
           setSelectedNote(noteIdParam);
-          // Limpa os params da URL para evitar re-seleção
           router.replace("/notes", { scroll: false });
-
-          // Caso 3: Nenhum noteId foi passado OU o noteId não foi encontrado.
-          // Apenas selecione a primeira nota da lista, se houver.
         } else if (newNotes.length > 0) {
           setSelectedNote(newNotes[0].id);
-          // Limpa params da URL se eles existirem mas não foram usados/encontrados
           if (noteIdParam || notebookIdParam || newNoteParam) {
             router.replace("/notes", { scroll: false });
           }
-
-          // Caso 4: A lista de notas está vazia
         } else {
           setSelectedNote(null);
-          // Limpa params da URL se eles existirem
           if (noteIdParam || notebookIdParam || newNoteParam) {
             router.replace("/notes", { scroll: false });
           }
