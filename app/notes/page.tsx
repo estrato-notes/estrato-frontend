@@ -526,14 +526,15 @@ export default function NotesPage() {
     }
   };
 
-  const handleMoveNote = async (targetNotebookId: string) => {
-    const noteIdToMove = noteToMove;
-    if (!noteIdToMove) return;
+  const handleMoveNote = async (noteId: string, targetNotebookId: string) => {
+    if (!noteId || isMovingNote) return;
 
-    const noteToMoveObj = notes.find((n) => n.id === noteIdToMove);
-    if (!noteToMoveObj || isMovingNote) return;
+    const noteToMoveObj = notes.find((n) => n.id === noteId);
+    if (!noteToMoveObj) return;
 
     setIsMovingNote(true);
+    setNoteToMove(noteId);
+
     const toastId = toast.loading("Movendo nota...");
 
     try {
@@ -542,9 +543,9 @@ export default function NotesPage() {
         { notebook_id: targetNotebookId }
       );
 
-      setNotes((prev) => prev.filter((n) => n.id !== noteIdToMove));
+      setNotes((prev) => prev.filter((n) => n.id !== noteId));
 
-      if (selectedNote === noteIdToMove) {
+      if (selectedNote === noteId) {
         setSelectedNote(null);
       }
 
@@ -1128,8 +1129,10 @@ export default function NotesPage() {
                                             key={notebook.id}
                                             disabled={isMovingNote}
                                             onClick={() => {
-                                              setNoteToMove(note.id);
-                                              handleMoveNote(notebook.id);
+                                              handleMoveNote(
+                                                note.id,
+                                                notebook.id
+                                              );
                                             }}
                                           >
                                             {notebook.name}
@@ -1354,8 +1357,7 @@ export default function NotesPage() {
                                         key={notebook.id}
                                         disabled={isMovingNote}
                                         onClick={() => {
-                                          setNoteToMove(note.id);
-                                          handleMoveNote(notebook.id);
+                                          handleMoveNote(note.id, notebook.id);
                                         }}
                                       >
                                         {notebook.name}
