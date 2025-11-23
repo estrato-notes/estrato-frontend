@@ -184,7 +184,7 @@ export default function ProfilePage() {
     const toastId = toast.loading("Excluindo sua conta...");
 
     try {
-      await api.delete("users/me/data");
+      await api.delete("/users/me/data");
 
       toast.loading("Quase lá... Excluindo sua conta...", { id: toastId });
 
