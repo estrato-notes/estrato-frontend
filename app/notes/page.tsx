@@ -435,7 +435,7 @@ export default function NotesPage() {
     const toastId = toast.loading("Criando caderno...");
 
     try {
-      const response = await api.post<Notebook>("/notebooks", {
+      const response = await api.post<Notebook>("/notebooks/", {
         name: newNotebookName.trim(),
       });
 
